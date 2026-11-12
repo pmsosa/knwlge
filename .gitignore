@@ -1,0 +1,11 @@
+data/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+
+# the private history before the public release (a git bundle; not published)
+.history/
+
+# throw-away demos made by tools/e2e.sh
+.e2e/

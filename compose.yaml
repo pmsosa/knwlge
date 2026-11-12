@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        DEV: "1"   # includes pytest so `docker compose run --rm app pytest` works
+    image: knwlge
+    container_name: knwlge
+    # Where it listens is up to the deployment (see .env.example): 0.0.0.0 by default, 127.0.0.1 behind a proxy.
+    ports: ["${KNWLGE_BIND:-0.0.0.0}:${KNWLGE_PORT:-9180}:9180"]
+    volumes:
+      - ./data:/data
+    environment:
+      TZ: ${TZ:-America/Los_Angeles}
+      KNWLGE_MODE: ${KNWLGE_MODE:-personal}
+      KNWLGE_ALLOWED_HOSTS: ${KNWLGE_ALLOWED_HOSTS:-}
+    restart: unless-stopped
