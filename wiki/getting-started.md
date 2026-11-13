@@ -30,13 +30,29 @@ log). The username you sign in with stays the same. The same page has **change p
 
 ## Finding your way around
 
-<img src="images/courses.png" alt="The courses page: a continue banner and course cards with depth and progress" width="100%">
+<img src="images/courses.png" alt="The courses page: a continue banner, search, tag filters and the pinned course first under My courses" width="100%">
 
-- **courses** (the home page): a **continue** banner for where you left off, then a card per course with its depth,
-  progress, and how many questions are waiting to be revisited.
-- **new course**: make one (authors and admins).
-- **people**, **usage**, **audit**, **settings**: for admins (in personal mode you're the admin, and people and audit
-  don't appear).
+- **courses** (the home page): a **continue** banner for where you left off, then your courses, then everything else
+  (see below).
+- **new course**: make one (authors and admins). **import** next to it brings in a course package.
+- **dashboard**, **people**, **usage**, **audit**, **settings**: for admins (in personal mode you're the admin, and
+  dashboard, people and audit don't appear).
+
+### Your courses and the rest
+
+The home page has two parts, split by a line:
+
+- **My courses**: the ones you're taking. A course moves up here by itself once you start it (finish a session or
+  answer a question). Pinned ones come first. A course an author is still making is theirs too.
+- **Available**: everything else you can open. **+** on a card adds it to your courses without starting it.
+
+On each of your cards, the pin keeps it at the top, and the box icon **moves it to available** when you're done with
+it or putting it aside. Your progress stays; start it again (or press **+**) and it comes back up. Pins and shelves are
+yours alone: nobody else's home page changes.
+
+**Search** looks through titles, subjects, summaries and tags. The **tags** under it filter both parts at once; press
+**All** to clear. Tags are shared: the AI suggests two or three when it plans a course, and authors change them in
+the course's **Course** tab.
 
 What you can't use isn't shown. Inside a course the outline stays on the left and only the content on the right
 scrolls, so the page itself never moves.
@@ -67,10 +83,12 @@ come from the server, so you need a connection to study.
 
 ## Adding the AI key
 
-Knwlge uses Google's Gemini to plan, write, mark and answer. An admin (you, in personal mode) opens **Settings**,
-pastes a key from [Google AI Studio](https://aistudio.google.com/apikey) under **Gemini API key** and presses
-**save key**, then **test it**. The key stays on the server: it's never sent to a browser and never shown again
-(only its last few characters). Live research and the reading list need a paid-tier key; free keys still work,
-and those steps say they ran without search.
+Knwlge uses an AI to plan, write, mark and answer: Google's Gemini by default, or OpenAI, Anthropic's Claude or a local
+model. An admin (you, in personal mode) opens **Settings** and, under **AI providers**, pastes a Gemini key from
+[Google AI Studio](https://aistudio.google.com/apikey) into the Google Gemini box and presses **save** (it's tested
+straight away). To use another provider, open **Add a provider** instead and then pick it under **Who does what**.
+Keys stay on the server: they're never sent to a browser and never shown again (only the last few characters).
+Live research and the reading list need web search: a paid-tier Gemini key or Claude; other providers write without
+it and say so.
 
 More: [Administration](administration.md).

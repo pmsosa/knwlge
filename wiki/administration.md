@@ -2,32 +2,91 @@
 
 [Guide home](README.md) · Previous: [Editing a course](editing-courses.md)
 
-For admins. In personal mode you're the admin; **people** and **audit** only exist in team mode.
+For admins. In personal mode you're the admin; **dashboard**, **people** and **audit** only exist in team mode.
 
 ## Settings
 
-<img src="images/settings.png" alt="Settings: appearance, the Gemini key, the monthly budget, models and paused work" width="100%">
+<img src="images/settings.png" alt="Settings: appearance, then the AI providers: Gemini, Claude and a local Ollama server, each with its key, models and test result" width="100%">
 
 | Section | What it does |
 |---|---|
 | Appearance | Auto, light or dark, for this browser |
-| Gemini API key | **save key**, **test it** (a tiny call that checks it works), **remove key**. The key never leaves the server and isn't shown again |
+| AI providers | Gemini is built in; add OpenAI, Anthropic or an OpenAI-compatible endpoint. Each has **save**, **test and list models**, **remove**, and **Prices** (see below). Keys never leave the server and aren't shown again |
+| Who does what | A provider and model for each kind of work (see below) |
 | Monthly budget | A cap in dollars, or **no limit** (the default). When the month's spend reaches it, new work pauses until next month or until you raise it |
-| Models | Which Gemini model does what: planning and checkpoints, writing and feedback, quick checks, illustrations. Change them if Google renames or retires one |
 | Password (personal mode) | Off by default: the app just opens. Set one and Knwlge asks for it; **turn off password** opens it again |
-| Paused work | Work pauses when Gemini rate-limits, refuses the key, or the budget is reached. **resume paused work now** tries again (saving settings does too) |
+| Paused work | Work pauses when a provider rate-limits, refuses its key, or the budget is reached. **resume paused work now** tries again (saving settings does too) |
+
+## AI providers
+
+<img src="images/providers-roles.png" alt="Who does what: a provider and model for planning, writing, quick checks, feedback, the tutor and reading lists" width="100%">
+
+**Add a provider** takes:
+
+- **OpenAI**: an API key. Writes through Chat Completions; draws pictures with an image model such as `gpt-image-1`.
+  No web search, so reading lists are written without it (they're still checked link by link).
+- **Anthropic (Claude)**: an API key. Has web search for live research and reading lists; can't draw pictures. On the
+  newest Claude models a declined request is retried on another Claude model by Anthropic itself.
+- **OpenAI-compatible**: the address of anything that speaks the OpenAI API, such as LiteLLM, Ollama
+  (`http://<machine>:11434/v1`), vLLM or LM Studio, and a key if it wants one. Small local models can struggle to
+  write a whole lesson; try one role (the tutor, say) before giving them more.
+
+Adding one tests it straight away: it lists the models the key can use and asks one of them for a tiny answer. The
+result shows on its card. **test and list models** runs it again.
+
+**Who does what** picks a provider and model for each kind of work:
+
+| Role | What it does |
+|---|---|
+| Planning and projects | Questions before a course, the plan, checkpoints and projects. Use the strongest model |
+| Writing lessons | Most sessions, and section rewrites |
+| Quick checks | The second read-through of each session, and marking short answers |
+| Feedback on written work | Marking written exercises and projects against their rubric |
+| Tutor | Answers about a course, a session or a question |
+| Reading lists | Books, videos and courses (works best with web search) |
+| Illustrations | AI pictures (Gemini or OpenAI only) |
+
+A role nobody has changed uses Gemini with the model it always had. If one provider is over-cautious with a subject
+(medicine, chemistry, the history of warfare...), switch that role to another. Removing a provider sends its roles
+back to Gemini. Changes apply to new work, not to what's already written.
+
+**Prices**: Knwlge knows Gemini's and Claude's prices. For other models, open **Prices** on the provider's card and
+type dollars per million input and output tokens (0 for a free local model); until then their calls count as
+"unknown price" in Usage.
 
 ## Usage and the budget
 
 <img src="images/usage.png" alt="Usage: this month's spend, all time, by course and by kind of work" width="100%">
 
-Every Gemini call is logged with the tokens it used and its cost, from a price table that includes Google's
-announced December 2026 and January 2027 increases. **usage** shows this month and all time, by course, by person
-(team mode) and by kind of work, and how many Google searches were used (5,000 a month are free). Your Google bill is
-the final word. Learners never see costs.
+Every AI call is logged with the provider, the tokens it used and its cost, from built-in price tables (Gemini's,
+including Google's announced December 2026 and January 2027 increases, and Claude's) or the prices you typed in.
+**usage** shows this month and all time, by course, by person (team mode) and by kind of work, and how many Google
+searches were used (5,000 a month are free); the dashboard adds spend by provider. Your providers' bills are the final
+word. Learners never see costs.
 
 Rough costs: planning is a few cents; a Boot Camp is about 30-35 calls to build, mostly writing sessions; feedback,
 tutor answers and section rewrites are a cent or two each; an AI illustration is about 3¢.
+
+## The dashboard
+
+<img src="images/dashboard.png" alt="The dashboard: totals, each person's courses and progress, and a row of bars per course showing how many finished each session" width="100%">
+
+**dashboard** (team mode) shows, for admins only:
+
+- **People**: what each person is taking and how far they are (sessions done, never scores), what they've finished,
+  their achievements and when they were last active.
+- **Courses**: how many are taking each one and how many finished it, a bar per session for how many people finished
+  it (where the bars drop is where people stop), and the sessions whose questions are often missed or revealed.
+- **Spend** this month by provider and by person.
+- **Activity feed**: the switch for everyone, how many people share, and the latest entries.
+
+### The activity feed
+
+The feed shows when someone finishes a session or a course, or earns an achievement: on the home page under
+**Recently**, and on the dashboard. It's opt-in twice over: an admin can turn it off for everyone, and each person
+chooses in their account (**Share my activity**, off by default) whether they appear. Nothing is recorded for someone
+who isn't sharing, so turning it on later never shows the past; turning it off removes their entries. Drafts never
+appear, and entries older than 90 days are cleared.
 
 ## People (team mode)
 

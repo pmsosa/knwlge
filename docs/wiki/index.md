@@ -9,10 +9,13 @@ What's left to build: [ROADMAP](../ROADMAP.md). Planning documents: [PLAN](../PL
 | [architecture](architecture.md) | Parts, modules, how a request flows, how background work runs |
 | [data-model](data-model.md) | Tables, ids, course files, schema versions and upgrades |
 | [jobs-and-gemini](jobs-and-gemini.md) | The job queue and worker, the Gemini client, models, prices and the budget |
+| [providers](providers.md) | Gemini, OpenAI, Anthropic and OpenAI-compatible endpoints behind one interface, roles, routes, prices, keys |
 | [course-pipeline](course-pipeline.md) | Questions, plan, sessions, checks, rewrites, the reading list, editing and section rewrites |
 | [learning](learning.md) | Attempts, marking, reveals, warm-ups and spaced review, progress (no scores), Reading mode, the tutor |
 | [media](media.md) | Diagrams, Commons pictures and audio, YouTube, illustrations, widgets, experiments |
 | [reading](reading.md) | Verifying further reading and live-research sources |
+| [library-and-people](library-and-people.md) | Tags and each person's shelves, achievements, the opt-in feed, the admin dashboard |
+| [packages](packages.md) | The `.knwlge` format, export, the untrusted import, printing |
 | [auth](auth.md) | Modes, accounts, sign-in, sessions, roles, course visibility, the audit log |
 | [frontend](frontend.md) | Plain JS modules, the router, views, the tutor bubble, the section menu, Reading mode, the installable app, browser tests |
 | [security](security.md) | CSP, host checks, safe fetching, sandboxed experiments, prompt fencing |

@@ -6,7 +6,8 @@
 
 <p align="center">
   <b>Name any subject and get a self-paced course: planned, written, marked and kept honest.</b><br>
-  <i>Pronounced "knowledge".</i> Gemini plans the course, writes short lessons with worked examples, pictures and<br>
+  <i>Pronounced "knowledge".</i> An AI (Gemini, Claude, OpenAI or a local model, one per kind of work) plans the<br>
+  course, writes short lessons with worked examples, pictures and<br>
   practice, gives feedback on your written work and answers your questions. The app checks its work: a second<br>
   read-through for every session, points from the rubric, and reading suggestions looked up before you see them.<br>
   No deadlines, no notifications, no grades or scores: just progress.
@@ -16,7 +17,7 @@
   <img src="https://badgen.net/badge/FastAPI/Python%203.12/009688" alt="FastAPI, Python 3.12">
   <img src="https://badgen.net/badge/SQLite/WAL/003B57" alt="SQLite">
   <img src="https://badgen.net/badge/Docker/compose/2496ED" alt="Docker compose">
-  <img src="https://badgen.net/badge/AI/Gemini/4285F4" alt="Gemini">
+  <img src="https://badgen.net/badge/AI/Gemini%20%C2%B7%20Claude%20%C2%B7%20OpenAI%20%C2%B7%20local/4285F4" alt="AI: Gemini, Claude, OpenAI or a local model">
   <img src="https://badgen.net/badge/Frontend/plain%20JS%2C%20no%20build/F7DF1E" alt="Plain JavaScript, no build step">
   <img src="https://badgen.net/badge/License/BSD%203-Clause/blue" alt="License: BSD 3-Clause">
 </p>
@@ -56,9 +57,9 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="wiki/getting-started.md"><img src="wiki/images/courses.png" alt="Courses page with a continue banner and course cards showing depth, progress and mastery" width="100%"></a><br>
-<b>Your courses</b><br>
-<sub>Pick up where you left off. Every course shows its depth and progress, and the next session is one click away.</sub>
+<a href="wiki/getting-started.md#your-courses-and-the-rest"><img src="wiki/images/courses.png" alt="Courses page: a continue banner, search, tag filters and the pinned course first under My courses" width="100%"></a><br>
+<b>Your courses first</b><br>
+<sub>The ones you're taking sit on top, pinned ones first; everything else is under Available. Search and filter by tag.</sub>
 </td>
 <td width="50%" valign="top">
 <a href="wiki/making-a-course.md"><img src="wiki/images/new-course.png" alt="New course form with the subject, notes, your own material, three depths and the extras" width="100%"></a><br>
@@ -114,6 +115,30 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 <sub>A warm paper look by day and a near-black one at night, following your device. Installable as an app.</sub>
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+<a href="wiki/administration.md#ai-providers"><img src="wiki/images/providers-roles.png" alt="Settings: a provider and a model for each role, such as Claude for planning, Gemini for writing and a local model for the tutor" width="100%"></a><br>
+<b>Any AI, one per job</b><br>
+<sub>Gemini, Claude, OpenAI or a local model through any OpenAI-compatible endpoint. Pick one for planning, one for marking, another for the tutor.</sub>
+</td>
+<td width="50%" valign="top">
+<a href="wiki/administration.md#the-dashboard"><img src="wiki/images/dashboard.png" alt="Admin dashboard: people and what they're taking, per-session progress bars for each course, and where people get stuck" width="100%"></a><br>
+<b>See how people are doing</b><br>
+<sub>For admins in team mode: who is taking what, how far each course gets, where answers are often missed, and spend by provider.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="wiki/studying.md#achievements"><img src="wiki/images/achievements.png" alt="A course's achievements: earned ones filled in, the rest outlined, including course-themed ones" width="100%"></a><br>
+<b>Achievements for finishing, never for speed</b><br>
+<sub>A built-in set on every course, plus a few themed ones written with the plan. An opt-in feed shares them, if you want.</sub>
+</td>
+<td width="50%" valign="top">
+<a href="wiki/editing-courses.md#printing-and-sharing"><img src="wiki/images/print.png" alt="A whole course laid out on one page for printing, with the contents and the first lesson" width="100%"></a><br>
+<b>Print it, share it</b><br>
+<sub>A whole course on one page for Save as PDF, with or without answers. Or a .knwlge package that imports into any Knwlge.</sub>
+</td>
+</tr>
 </table>
 
 ## Features
@@ -128,7 +153,12 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 - **Verified further reading** - books, videos, courses and podcasts, each one looked up before it's shown
 - **Reading mode** - just want to read? Each person can hide the questions, practice, written work and warm-ups on any course; they're still there when you switch it off
 - **A tutor** - a chat bubble on every course and session page; ask about the session, a question (it sees your attempt) or a selected passage
-- **Edit anything** - right-click a section to edit its Markdown, or have Gemini rewrite it or add to it; edit questions; rewrite a whole session; export a course as Markdown
+- **Edit anything** - right-click a section to edit its Markdown, or have the AI rewrite it or add to it; edit questions; rewrite a whole session
+- **Any AI provider, one per role** - Gemini built in; add OpenAI, Anthropic (Claude) or any OpenAI-compatible endpoint (LiteLLM, Ollama, vLLM, LM Studio) and pick a provider and model for planning, writing, checks, marking, the tutor, reading lists and illustrations; keys tested on entry, model lists filled in, prices per provider
+- **Your courses first** - the courses you're taking (started, added or pinned) above everything else available, with search and shared tags (suggested with the plan, edited by authors)
+- **Share, import and print** - a `.knwlge` package with the whole course (optionally your own progress), an import that treats the file as untrusted, Markdown export, and a print layout for Save as PDF
+- **Achievements** - a built-in set on every course plus two or three course-themed ones written with the plan, for exploring and finishing, never for speed
+- **Dashboard and an opt-in feed (team mode)** - admins see who is taking what, per-session progress through each course, where answers are often missed and spend by provider; each person chooses whether their finished sessions and achievements appear in the feed
 - **Personal or team** - just you (open, or with an optional password), or accounts with learner, author and admin roles, drafts and publishing, everyone's progress their own, and an audit log of who did what
 - **Costs in the open** - every call logged with its tokens and cost, by course, person and kind of work; an optional monthly budget that pauses work when reached
 - **Desktop and phone** - an app-like layout where only content scrolls, a folding menu on phones, light and dark (Paper style); installable as an app over HTTPS
@@ -142,7 +172,7 @@ flowchart LR
   A --> F[(Course files)]
   A -->|enqueue| J[Job queue]
   W[Worker thread] --> J
-  W -->|generateContent| G[Gemini API]
+  W -->|one per role| G[Gemini, Claude, OpenAI or an OpenAI-compatible endpoint]
   W -->|book, video, page and media checks| N[Open Library, YouTube, Commons, the web]
 ```
 
@@ -154,7 +184,9 @@ flowchart LR
 | API (`app/main.py`) | FastAPI routes under `/api`: courses, sessions, items, chat, media, settings, usage, users, audit |
 | Course pipeline (`app/pipeline.py`, `prompts.py`, `tiers.py`) | Questions, plan, sessions, checks and the reading list, each a JSON-Schema prompt |
 | Learning (`app/learning.py`) | Attempts, marking, warm-ups and spaced review, progress, the tutor |
-| Jobs and Gemini (`app/jobs.py`, `gemini.py`, `budget.py`, `pricing.py`) | The queue and its worker thread, the REST client, cost logging and the budget |
+| Jobs and providers (`app/jobs.py`, `providers.py`, `gemini.py`, `budget.py`, `pricing.py`) | The queue and its worker thread, one interface over Gemini, OpenAI, Anthropic (official SDK) and OpenAI-compatible endpoints, cost logging and the budget |
+| Library and people (`app/library.py`, `achievements.py`, `activity.py`, `dashboard.py`) | Tags and each person's shelves, achievements, the opt-in feed and the admin dashboard |
+| Packages (`app/package.py`) | `.knwlge` export and the untrusted import |
 | Media and checks (`app/media.py`, `verify.py`) | Lesson media and link checking, run in the worker's idle time, public addresses only |
 | Accounts (`app/auth.py`, `accounts.py`, `audit.py`) | Modes, sign-in, roles, account commands, the audit log |
 | SQLite | Courses, sessions, questions, everyone's progress, jobs, calls, the audit log (WAL mode) |
@@ -184,7 +216,8 @@ docker compose up -d --build        # http://<this machine>:9180
 docker compose exec app python -m app.accounts add-admin <username> "<display name>"
 ```
 
-Open the address, go to **Settings**, paste the Gemini key and press **test it**, then follow the
+Open the address, go to **Settings**, paste a Gemini key (or add another provider: OpenAI, Anthropic, or a local
+model through any OpenAI-compatible endpoint, and pick it for every role) and test it, then follow the
 [user guide](wiki/README.md) from [How to use Knwlge](wiki/how-to-use.md). Knwlge assumes nothing about the network
 around it: put it behind HTTPS before using it over a network you don't control.
 
@@ -204,6 +237,8 @@ docker run --rm -e KNWLGE_DATA=/demo -e KNWLGE_MODE=team -e KNWLGE_NO_WORKER=1 -
 # browser smoke test, and the user guide's screenshots, against a throw-away demo (Playwright in a container)
 sh tools/e2e.sh
 sh tools/e2e.sh shots
+# on a box with its own shared Playwright image and runner, e.g.:
+E2E_IMAGE=lab-browser E2E_RUN=browser-run sh tools/e2e.sh
 ```
 
 Database upgrades run at start, after a copy of the database is saved in `data/backups/`. What's next is in
@@ -212,8 +247,9 @@ Database upgrades run at start, after a copy of the database is saved in `data/b
 
 ## Configuration
 
-Settings for the container live in `.env` (`.env.example` explains each one). The Gemini key, the models and the
-monthly budget are set on the **Settings** page and kept in the database. Everything else is under `./data`: the
+Settings for the container live in `.env` (`.env.example` explains each one). The AI providers and their keys, which
+provider and model each role uses, and the monthly budget are set on the **Settings** page and kept in the database
+(keys never reach a browser). Everything else is under `./data`: the
 SQLite database, course files and pre-upgrade copies. Back that folder up together with `.env`.
 
 | Variable | Description | Default |
@@ -233,8 +269,9 @@ knwlge/
 │   ├── db.py           # schema, upgrades, transactions
 │   ├── pipeline.py     # making a course; prompts.py has every prompt and schema, tiers.py the depths
 │   ├── learning.py     # attempts, marking, warm-ups, progress, the tutor, materials
-│   ├── editing.py      # hand edits, section rewrites, export
-│   ├── jobs.py         # job queue and worker; gemini.py, budget.py, pricing.py
+│   ├── editing.py      # hand edits, section rewrites, Markdown export; package.py the .knwlge export and import
+│   ├── jobs.py         # job queue and worker; providers.py (Gemini, OpenAI, Anthropic, compatible), gemini.py, budget.py, pricing.py
+│   ├── library.py      # tags and each person's shelves; achievements.py, activity.py (feed), dashboard.py
 │   ├── media.py        # lesson media; verify.py checks reading suggestions
 │   ├── auth.py         # modes, accounts, roles; accounts.py (CLI), audit.py
 │   ├── demo.py         # made-up demo data
@@ -253,6 +290,6 @@ knwlge/
 [BSD 3-Clause](LICENSE). Copyright (c) 2026, Pedro M. Sosa.
 
 The course pipeline and classroom layout were inspired by [SelfSemester](https://github.com/munitkala/selfsemester)
-(MIT licence). Knwlge is a separate rewrite in Python for Gemini; no code was copied. Bundled third-party pieces keep
+(MIT licence). Knwlge is a separate rewrite in Python; no code was copied. Bundled third-party pieces keep
 their own licences: the fonts (SIL Open Font License), Lucide icons (ISC), marked, DOMPurify, KaTeX and Mermaid
 (fetched at build time); pictures and recordings in lessons carry their own Wikimedia Commons credits.

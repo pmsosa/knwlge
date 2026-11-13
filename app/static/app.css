@@ -225,7 +225,9 @@ label.field { display: block; margin: 0 0 4px; font-size: 13px; font-weight: 500
 .card h3 a.stretch:focus-visible { outline: none; }
 .card:has(a.stretch:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
 .card.pinned { border-color: var(--smoke); }
-.card-actions { display: inline-flex; gap: 2px; position: relative; z-index: 1; }   /* above the stretched link */
+.card-actions { display: inline-flex; gap: 2px; position: relative; z-index: 1; flex: none; margin: -4px -6px 0 auto; }   /* above the stretched link */
+.card > .spread { flex-wrap: nowrap; align-items: flex-start; }
+.card > .spread > .row { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
 .icon-btn { min-height: 28px; width: 28px; padding: 0; border-radius: 50%; background: transparent; color: var(--iron); border-color: transparent; }
 .icon-btn:hover { opacity: 1; color: var(--ink); background: var(--mist); border-color: var(--stone); }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -651,5 +653,7 @@ ul.feed.panel { padding: 6px 16px; }
 .price-row { display: grid; grid-template-columns: minmax(0, 1fr) 6rem 6rem; gap: 6px; align-items: center; }
 .price-row input { padding: 4px 6px; }
 .route { padding-bottom: 10px; border-bottom: 1px solid var(--stone); }
+.route .row > select { width: auto; flex: 0 1 17rem; min-width: 0; }
+.route .row > select.rmodel { flex-basis: 20rem; }
 .route:last-of-type { border-bottom: 0; }
 #addprov summary { cursor: pointer; }

@@ -1,25 +1,28 @@
 # Data model
 
-See [index](index.md). Schema and upgrades: [app/db.py](../../app/db.py). `SCHEMA_VERSION = 3`.
+See [index](index.md). Schema and upgrades: [app/db.py](../../app/db.py). `SCHEMA_VERSION = 4`.
 
 | Table | Holds |
 |---|---|
-| `settings` | Key-value settings: the Gemini key, models, budget cap, schema version |
-| `courses` | Subject, notes, depth, status (`questions` → `answering` → `planning` → `review` → `building` → `ready`), plan JSON, answers, options (extras), `author_id`, `visibility` (`draft`/`published`), `published_at` |
+| `settings` | Key-value settings: the Gemini key and model list, the per-role routes (`route_<role>`), the old per-tier models, budget cap, `feed_off` |
+| `courses` | Subject, notes, depth, status (`questions` → `answering` → `planning` → `review` → `building` → `ready`), plan JSON, answers, options (extras), `tags_json`, `author_id`, `visibility` (`draft`/`published`), `published_at` |
 | `sessions` | One per plan slot: kind, minutes, title, topics, objectives, `state` (`pending`/`writing`/`checking`/`ready`/`failed`), `content_json` (goal, hook, chunks with Markdown and worked examples, wrap-up), warnings |
 | `items` | Questions, exercises and project options: section (`check`, `practice`, `exercise`, `project`), chunk, type, options, answer, explanation, tolerance, rubric |
 | `attempts` | A person's answers: per item and `user_id`, status, score, feedback, files |
 | `item_reveals` | Which answers a person chose to see |
 | `review_queue` | Spaced review, keyed on (`user_id`, `item_id`): due date, interval, misses |
 | `session_progress` | Per person and session: finished, wrap-up summary, notes |
-| `course_prefs` | Per person and course: Reading mode on or off |
+| `course_prefs` | Per person and course: Reading mode on or off, `pinned`, `shelf` (NULL automatic, `mine`, `aside`) |
 | `course_opens` | When each person last opened each course (for "continue") |
 | `materials` | Uploaded files and typed notes per course |
 | `reading` | Reading suggestions and live-research sources, with their check status |
 | `media` | Lesson media per session and chunk, with fetch status, credit and file |
 | `chat_messages` | Tutor conversations, per course, scope (`course`, a session id or an item id) and person |
 | `jobs` | The queue: kind, ref, priority, status, attempts, request and result JSON, error, wait reason, `user_id` |
-| `llm_calls` | Every Gemini call: model, tokens, searches, cost, outcome, course, kind, person |
+| `llm_calls` | Every AI call: `provider` (NULL for Gemini), model, tokens, searches, cost, outcome, course, kind, person |
+| `providers` | AI providers besides the built-in Gemini: kind, label, base URL, key (server-side only), model list with optional prices, last test ([providers](providers.md)) |
+| `achievements`, `user_achievements` | Course-themed achievements (title, description, rule, slot) and who earned what, built-in ones included ([library-and-people](library-and-people.md)) |
+| `activity` | The opt-in feed: who, what (`session_done`, `course_done`, `achievement`), course, when |
 | `users`, `login_sessions` | Accounts and sign-ins ([auth](auth.md)) |
 | `audit_log` | Who did what, when, with details as JSON ([auth](auth.md#audit-log)) |
 
@@ -34,5 +37,6 @@ it. Paths inside are checked to stay in that folder.
 `db.init()` runs at start. When the stored schema version is older, it first copies the database with SQLite's
 backup API to `data/backups/knwlge-v<old>-before-upgrade-<stamp>.db`, then upgrades in one transaction. The v2 → v3
 upgrade (team edition) creates the owner account (id 1), adds `user_id` columns, moves per-person columns out of
-`sessions` into `session_progress` and `course_opens`, and rebuilds `review_queue` with its new key. Each upgrade is
-idempotent, and a v0.1.0 database is kept as a test fixture ([tests/fixtures/schema_v2.sql](../../tests/fixtures/schema_v2.sql)).
+`sessions` into `session_progress` and `course_opens`, and rebuilds `review_queue` with its new key. The v3 → v4 upgrade (v0.3) adds the
+`providers`, `activity`, `achievements` and `user_achievements` tables and the `courses.tags_json`, `course_prefs.pinned`,
+`course_prefs.shelf` and `llm_calls.provider` columns; nothing is moved. Each upgrade is idempotent, and a v0.1.0 database is kept as a test fixture ([tests/fixtures/schema_v2.sql](../../tests/fixtures/schema_v2.sql)).

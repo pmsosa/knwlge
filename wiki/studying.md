@@ -97,6 +97,19 @@ Every suggestion has been checked: books on Open Library, videos on YouTube, eve
 Ones that can't be found are dropped, so the list is shorter than what Gemini first suggested, but real. Each says
 what it is, how long it takes, whether it's free, and why it's worth your time.
 
+## Achievements
+
+<img src="images/achievements.png" alt="The Achievements tab: earned ones filled in, the rest outlined, with three course-themed ones" width="100%">
+
+Every course has a built-in set: your first finished session, halfway, the whole course, trying every question,
+sending every written exercise, ten warm-up answers, five questions for the tutor, notes in three sessions. On top,
+the AI writes two or three themed ones with the plan ("First standing wave"), each earned in one session. They're for
+exploring and finishing, never for speed or scores.
+
+A short message pops up when you earn one. The **Achievements** tab on each course shows what's earned and what's
+left, and your account page lists everything you've earned. In team mode they appear in the activity feed only if
+you've chosen to share (see [Administration](administration.md#the-activity-feed)).
+
 ## Progress is yours
 
 In team mode everyone has their own answers, feedback, warm-ups, notes and progress. Finishing a session, or getting

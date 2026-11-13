@@ -8,7 +8,7 @@ export default async function settings(view) {
   const byId = Object.fromEntries(s.providers.map((p) => [p.id, p]));
 
   const providerCard = (p) => html`<div class="prov" data-pid="${p.id}">
-    <div class="spread"><div><b>${p.label}</b> <span class="small faint">${p.kind_label}${p.base_url ? ` · ${p.base_url}` : ""}</span></div>
+    <div class="spread"><div><b>${p.label}</b> <span class="small faint">${[p.label === p.kind_label ? "" : p.kind_label, p.base_url].filter(Boolean).join(" · ")}</span></div>
       <span class="row" style="gap:4px">${raw(["search", "images", "pdf"].filter((k) => p.can[k]).map((k) =>
         `<span class="pill">${{ search: "web search", images: "pictures", pdf: "PDFs" }[k]}</span>`).join(""))}</span></div>
     <div class="small muted">${p.key_hint ? `Key ends ${p.key_hint}` : p.kind === "compatible" ? "No key (fine for a local server)" : "No key yet"}
