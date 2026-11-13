@@ -20,7 +20,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import audit, auth, budget, db, editing, gemini, jobs, learning, media, pipeline, pricing, verify
+from . import (achievements, activity, audit, auth, budget, dashboard, db, editing, gemini, jobs, learning, library, media, package, pipeline,
+               pricing, providers, verify)
 from .pipeline import Problem
 from .tiers import KIND_LABEL, TIERS, public as tiers_public
 
@@ -424,7 +425,8 @@ def _key_hint(key: str | None) -> str | None:
 @app.get("/api/status")
 def status(user: Me) -> dict:
     with db.tx() as c:
-        key = db.get_setting(c, "gemini_api_key")
+        key = all(p["api_key"] or not providers.KINDS[p["kind"]]["needs_key"]
+                  for p, _ in (providers.route(c, r) for r in providers.ROLES))
         waits = [dict(r) for r in c.execute("SELECT wait_reason, count(*) AS n FROM jobs WHERE status='waiting' GROUP BY wait_reason")]
         busy = c.execute("SELECT count(*) AS n FROM jobs WHERE status IN ('queued','running')").fetchone()["n"]
         checking = c.execute("SELECT count(*) AS n FROM reading WHERE status IN ('pending','checking')").fetchone()["n"]
@@ -445,6 +447,11 @@ def get_settings(user: Me) -> dict:
     with db.tx() as c:
         return {"key_hint": _key_hint(db.get_setting(c, "gemini_api_key")),
                 "models": {r: jobs.model_for(c, r) for r in ("pro", "flash", "lite", "image")},
+                "providers": [providers.public(p) for p in providers.all_providers(c)],
+                "routes": providers.routes(c),
+                "kinds": {k: {"label": v["label"], "base_url": v["base_url"], "needs_key": v["needs_key"],
+                              "search": v["search"], "images": v["images"], "pdf": v["pdf"]}
+                          for k, v in providers.KINDS.items() if k != "gemini"},
                 "defaults": pricing.DEFAULT_MODELS, "known_models": pricing.KNOWN_MODELS,
                 "budget_monthly_usd": budget.cap(c), "mode": auth.mode(),
                 "personal_password": auth.mode() == "personal" and bool(auth.owner(c)["password_hash"])}
@@ -498,15 +505,14 @@ def put_settings(body: SettingsIn, user: Me) -> dict:
 
 @app.post("/api/settings/test")
 def test_key(user: Me) -> dict:
+    """Test the Gemini key (the older button; providers have their own)."""
     admin(user)
     with db.tx() as c:
-        key = db.get_setting(c, "gemini_api_key") or ""
         model = jobs.model_for(c, "lite")
     try:
-        res = gemini.generate(key, model, "Answer only with the requested JSON.",
+        res = gemini.generate(_gemini_key(), model, "Answer only with the requested JSON.",
                               [gemini.text_part("Reply with ok=true and a five-word welcome for someone starting to learn.")],
-                              schema={"type": "object", "properties": {"ok": {"type": "boolean"}, "message": {"type": "string"}},
-                                      "required": ["ok", "message"], "additionalProperties": False})
+                              schema=providers.TEST_SCHEMA)
     except gemini.GeminiError as e:
         return {"ok": False, "message": str(e), "model": model}
     with db.tx() as c:
@@ -514,6 +520,110 @@ def test_key(user: Me) -> dict:
             budget.log_call(c, job_id=None, course_id=None, kind="test", model=call["model"], input_tokens=call["input"],
                             output_tokens=call["output"], search_queries=call["search"], outcome="ok", user_id=user["id"])
     return {"ok": True, "message": str(res.data.get("message", "")), "model": res.model}
+
+
+def _gemini_key() -> str:
+    with db.tx() as c:
+        return db.get_setting(c, "gemini_api_key") or ""
+
+
+# ---------- AI providers and which one each role uses (admins) ----------
+
+class ProviderIn(BaseModel):
+    kind: str
+    label: str = ""
+    base_url: str = ""
+    api_key: str = ""
+    search: bool = False
+
+
+@app.post("/api/providers")
+def add_provider(body: ProviderIn, user: Me) -> dict:
+    """Add a provider, then test it straight away (which also fills in its model list)."""
+    admin(user)
+    with db.tx() as c:
+        pid = providers.add(c, body.kind, body.label, body.base_url, body.api_key, body.search)
+        audit.log(c, "provider.added", "provider", pid, {"kind": body.kind, "label": body.label[:60],
+                                                         "base_url": body.base_url[:200]})
+    out = providers.test(db.tx, pid)
+    return {"id": pid, "test": out}
+
+
+class ProviderEdit(BaseModel):
+    label: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    prices: dict[str, list[float] | None] | None = None
+    search: bool | None = None
+    search_price: float | None = None
+    clear_search_price: bool = False
+
+
+@app.put("/api/providers/{pid}")
+def edit_provider(pid: str, body: ProviderEdit, user: Me) -> dict:
+    admin(user)
+    with db.tx() as c:
+        sp = None if body.clear_search_price else body.search_price if body.search_price is not None else "keep"
+        providers.update(c, pid, body.label, body.base_url, body.api_key, body.prices, body.search, sp)
+        details: dict[str, Any] = {}
+        if body.api_key:
+            details["key_ends_with"] = body.api_key.strip()[-4:]
+        if body.base_url is not None:
+            details["base_url"] = body.base_url[:200]
+        if body.prices is not None:
+            details["prices"] = body.prices
+        if body.search is not None:
+            details["search"] = body.search
+        if body.search_price is not None or body.clear_search_price:
+            details["search_price"] = body.search_price
+        audit.log(c, "provider.changed", "provider", pid, details)
+        jobs.resume_waiting(c)
+        return providers.public(providers.get(c, pid))
+
+
+@app.delete("/api/providers/{pid}")
+def delete_provider(pid: str, user: Me) -> dict:
+    admin(user)
+    with db.tx() as c:
+        providers.remove(c, pid)
+        audit.log(c, "provider.removed", "provider", pid)
+    return {"ok": True}
+
+
+class TestIn(BaseModel):
+    model: str | None = None
+
+
+@app.post("/api/providers/{pid}/test")
+def test_provider(pid: str, body: TestIn, user: Me) -> dict:
+    admin(user)
+    out = providers.test(db.tx, pid, (body.model or "").strip() or None)
+    with db.tx() as c:
+        if out["ok"]:
+            jobs.resume_waiting(c)
+    return out
+
+
+class RouteIn(BaseModel):
+    provider: str
+    model: str
+
+
+@app.put("/api/routes")
+def put_routes(body: dict[str, RouteIn], user: Me) -> dict:
+    """Pick a provider and model per role: {"planning": {"provider": "anth-1a2b3c", "model": "claude-opus-5-5"}, ...}"""
+    admin(user)
+    with db.tx() as c:
+        changed = {}
+        for role, r in body.items():
+            before = providers.route(c, role)
+            providers.set_route(c, role, r.provider, r.model)
+            if (before[0]["id"], before[1]) != (r.provider, r.model.strip()):
+                changed[role] = f"{r.provider}/{r.model.strip()}"
+        if changed:
+            audit.log(c, "settings.routes", "setting", "routes", changed)
+        jobs.resume_waiting(c)
+        return providers.routes(c)
 
 
 @app.get("/api/usage")
@@ -600,10 +710,14 @@ def list_courses(user: Me) -> list[dict]:
         for r in rows:
             if not auth.can_view(user, r):
                 continue
+            progress = learning.course_progress(c, r["id"], user["id"])
+            prefs = library.prefs(c, r["id"], user["id"])
+            building = auth.can_edit(user, r) and r["status"] != "ready"
             out.append({"id": r["id"], "title": r["title"], "subject": r["subject"], "summary": r["summary"],
                         "depth": r["depth"], "depth_label": TIERS[r["depth"]]["label"], "status": r["status"],
                         "error": r["error"] if auth.can_edit(user, r) else None,
-                        "progress": learning.course_progress(c, r["id"], user["id"]),
+                        "progress": progress, "tags": library.tags_of(r), "pinned": prefs["pinned"], "shelf": prefs["shelf"],
+                        "mine": library.is_mine(prefs, progress, building),
                         "created_at": r["created_at"], "last_opened_at": r["my_open"], "visibility": r["visibility"],
                         "author": _author_name(c, r["author_id"]), "can_edit": auth.can_edit(user, r),
                         "reading_mode": learning.reading_mode(c, r["id"], user["id"])})
@@ -648,6 +762,9 @@ def get_course(course_id: str, user: Me) -> dict:
             "options": media.options_of(r["options_json"]),
             "visibility": r["visibility"], "author": _author_name(c, r["author_id"]), "can_edit": mine,
             "published_at": r["published_at"], "updated_at": r["updated_at"],
+            "tags": library.tags_of(r), **library.prefs(c, course_id, user["id"]),
+            "achievements": achievements.listing(c, course_id, user["id"]),
+            "themed_achievements": achievements.themed(c, course_id) if mine else [],
         }
         if auth.at_least(user, "admin"):
             out["spend"] = c.execute("SELECT coalesce(sum(cost_usd),0) AS s FROM llm_calls WHERE course_id=?",
@@ -734,6 +851,157 @@ def export(course_id: str, user: Me) -> Response:
         audit.log(c, "course.exported", "course", course_id, {"format": "markdown"})
     safe = "".join(ch if ch.isalnum() or ch in " -_.()" else "-" for ch in name)
     return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe}"'})
+
+
+class OnOff(BaseModel):
+    on: bool
+
+
+class TagsIn(BaseModel):
+    tags: list[str]
+
+
+@app.put("/api/courses/{course_id}/tags")
+def put_tags(course_id: str, body: TagsIn, user: Me) -> dict:
+    with db.tx() as c:
+        row = editable(c, user, course_id)
+        old = library.tags_of(row)
+        tags = library.set_tags(c, course_id, body.tags)
+        if tags != old:
+            audit.log(c, "course.tags", "course", course_id, {"from": old, "to": tags})
+        return {"tags": tags}
+
+
+@app.get("/api/tags")
+def get_tags(user: Me) -> list[dict]:
+    with db.tx() as c:
+        ids = [r["id"] for r in c.execute("SELECT * FROM courses").fetchall() if auth.can_view(user, r)]
+        return library.all_tags(c, ids)
+
+
+class ShelfIn(BaseModel):
+    pinned: bool | None = None
+    shelf: str | None = None      # "mine" | "aside" | "auto"
+
+
+@app.put("/api/courses/{course_id}/shelf")
+def put_shelf(course_id: str, body: ShelfIn, user: Me) -> dict:
+    """This person's own place for a course on the home page: pinned, one of mine, or set aside."""
+    with db.tx() as c:
+        viewable(c, user, course_id)
+        if body.shelf is not None:
+            library.shelve(c, course_id, user["id"], None if body.shelf == "auto" else body.shelf)
+        if body.pinned is not None:
+            library.pin(c, course_id, user["id"], body.pinned)
+        return library.prefs(c, course_id, user["id"])
+
+
+class AchievementsIn(BaseModel):
+    items: list[dict]
+
+
+@app.put("/api/courses/{course_id}/achievements")
+def put_achievements(course_id: str, body: AchievementsIn, user: Me) -> dict:
+    with db.tx() as c:
+        editable(c, user, course_id)
+        slots = [r["seq"] for r in c.execute("SELECT seq FROM sessions WHERE course_id=?", (course_id,))]
+        achievements.edit_themed(c, course_id, body.items, slots)
+        audit.log(c, "course.achievements", "course", course_id, {"titles": [str(i.get("title", ""))[:60] for i in body.items[:5]]})
+        return {"themed_achievements": achievements.themed(c, course_id)}
+
+
+@app.get("/api/me/achievements")
+def my_achievements(user: Me) -> list[dict]:
+    with db.tx() as c:
+        def visible(cid: str) -> bool:
+            r = c.execute("SELECT * FROM courses WHERE id=?", (cid,)).fetchone()
+            return bool(r) and auth.can_view(user, r)
+        return achievements.profile(c, user["id"], visible)
+
+
+@app.get("/api/dashboard")
+def get_dashboard(user: Me) -> dict:
+    admin(user)
+    team_only()
+    with db.tx() as c:
+        activity.prune(c)
+        return dashboard.summary(c, user)
+
+
+# ---------- the activity feed (team mode, opt-in) ----------
+
+@app.get("/api/feed")
+def get_feed(user: Me) -> dict:
+    with db.tx() as c:
+        on = activity.feed_on(c)
+        return {"on": on, "sharing": activity.sharing(c, user["id"]), "items": activity.feed(c, user) if on else []}
+
+
+@app.put("/api/me/sharing")
+def put_sharing(body: OnOff, user: Me) -> dict:
+    with db.tx() as c:
+        activity.set_sharing(c, user["id"], body.on)
+        audit.log(c, "user.sharing", "user", str(user["id"]), {"on": body.on})
+        return {"sharing": body.on}
+
+
+@app.put("/api/feed/switch")
+def feed_switch(body: OnOff, user: Me) -> dict:
+    """Admin: the feed for everyone, on or off (each person still chooses whether they appear)."""
+    admin(user)
+    team_only()
+    with db.tx() as c:
+        db.set_setting(c, "feed_off", None if body.on else "1")
+        audit.log(c, "settings.feed", "setting", "feed", {"on": body.on})
+        return {"on": body.on}
+
+
+@app.get("/api/courses/{course_id}/package")
+def export_package(course_id: str, user: Me, progress: int = 0) -> Response:
+    """The whole course as a .knwlge package; with progress=1, the exporter's own progress and notes too."""
+    with db.tx() as c:
+        editable(c, user, course_id)
+        name, data = package.export(c, course_id, user["id"], bool(progress))
+        audit.log(c, "course.exported", "course", course_id, {"format": "knwlge", "progress": bool(progress)})
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.post("/api/import")
+async def import_course(user: Me, file: UploadFile = File(...), progress: bool = Form(True)) -> dict:
+    auth.require(user, "author")
+    data = await file.read(package.MAX_PACKAGE + 1)
+    with db.tx() as c:
+        cid = package.import_package(c, data, user["id"], progress)
+        audit.log(c, "course.imported", "course", cid, {"file": (file.filename or "")[:200], "bytes": len(data),
+                                                         "progress": progress})
+        return {"id": cid}
+
+
+@app.get("/api/courses/{course_id}/print")
+def print_course(course_id: str, user: Me, answers: int = 0) -> dict:
+    """Everything needed to print a course in one go. Answers only for its authors (or when the person has seen them)."""
+    with db.tx() as c:
+        r = viewable(c, user, course_id)
+        mine = auth.can_edit(user, r)
+        sessions = []
+        for s in c.execute("SELECT * FROM sessions WHERE course_id=? AND state='ready' ORDER BY seq", (course_id,)).fetchall():
+            items = []
+            for i in c.execute("SELECT * FROM items WHERE session_id=? ORDER BY seq", (s["id"],)).fetchall():
+                item = {"id": i["id"], "section": i["section"], "chunk": i["chunk"], "qtype": i["qtype"], "title": i["title"],
+                        "prompt": i["prompt"], "options": db.loads(i["options_json"], [])}
+                if answers and (mine or learning.revealed(c, i["id"], user["id"]) or learning.latest_attempt(c, i["id"], user["id"])):
+                    item.update(answer=i["answer"], explanation=i["explanation"])
+                items.append(item)
+            sessions.append({"id": s["id"], "seq": s["seq"], "kind": s["kind"], "kind_label": KIND_LABEL[s["kind"]], "title": s["title"],
+                             "minutes": s["minutes"], "content": db.loads(s["content_json"], {}), "items": items,
+                             "media": [media.public(m) for m in c.execute(
+                                 "SELECT * FROM media WHERE session_id=? ORDER BY chunk, seq", (s["id"],))]})
+        plan = db.loads(r["plan_json"], {}) or {}
+        return {"id": r["id"], "title": r["title"], "summary": r["summary"], "depth_label": TIERS[r["depth"]]["label"],
+                "prerequisites": plan.get("prerequisites", []), "author": _author_name(c, r["author_id"]), "sessions": sessions,
+                "answers_shown": bool(answers), "can_edit": mine,
+                "reading": [dict(x) for x in c.execute("SELECT title, creator, url, kind, why, free FROM reading WHERE course_id=? "
+                                                       "AND status='verified' AND kind!='source' ORDER BY id", (course_id,))]}
 
 
 # ---------- materials (a course's authors and admins) ----------
@@ -844,9 +1112,17 @@ class Finish(BaseModel):
 @app.post("/api/sessions/{session_id}/finish")
 def finish(session_id: str, body: Finish, user: Me) -> dict:
     with db.tx() as c:
-        viewable(c, user, _course_of(c, "sessions", session_id))
+        course_id = _course_of(c, "sessions", session_id)
+        viewable(c, user, course_id)
+        was_done = learning.progress_of(c, session_id, user["id"])
         learning.finish_session(c, session_id, body.summary, user["id"])
-    return {"ok": True}
+        if not (was_done and was_done["done_at"]):
+            s = c.execute("SELECT seq, title FROM sessions WHERE id=?", (session_id,)).fetchone()
+            activity.record(c, user["id"], "session_done", course_id, {"seq": s["seq"], "title": s["title"]})
+            p = learning.course_progress(c, course_id, user["id"])
+            if p["sessions"] and p["done"] == p["sessions"]:
+                activity.record(c, user["id"], "course_done", course_id, {})
+        return {"ok": True, "achievements": achievements.check(c, course_id, user["id"])}
 
 
 @app.post("/api/sessions/{session_id}/reopen")
@@ -860,13 +1136,10 @@ def reopen(session_id: str, user: Me) -> dict:
 @app.put("/api/sessions/{session_id}/note")
 def session_note(session_id: str, body: Text, user: Me) -> dict:
     with db.tx() as c:
-        viewable(c, user, _course_of(c, "sessions", session_id))
+        course_id = _course_of(c, "sessions", session_id)
+        viewable(c, user, course_id)
         learning.set_note(c, session_id, body.text, user["id"])
-    return {"ok": True}
-
-
-class OnOff(BaseModel):
-    on: bool
+        return {"ok": True, "achievements": achievements.check(c, course_id, user["id"])}
 
 
 @app.put("/api/courses/{course_id}/reading")
@@ -968,8 +1241,11 @@ async def post_attempt(item_id: str, user: Me, answer: str = Form(""), context: 
                        files: list[UploadFile] | None = File(None)) -> dict:
     loaded = [(f.filename or "file", await f.read(learning.MAX_FILE + 1)) for f in (files or [])]
     with db.tx() as c:
-        viewable(c, user, _course_of(c, "items", item_id))
-        return learning.attempt(c, item_id, answer, loaded, context, user["id"])
+        course_id = _course_of(c, "items", item_id)
+        viewable(c, user, course_id)
+        out = learning.attempt(c, item_id, answer, loaded, context, user["id"])
+        out["achievements"] = achievements.check(c, course_id, user["id"])
+        return out
 
 
 @app.post("/api/items/{item_id}/reveal")
@@ -1057,7 +1333,7 @@ def post_chat(body: ChatIn, user: Me) -> dict:
     with db.tx() as c:
         viewable(c, user, body.course)
         learning.ask(c, body.course, body.scope, body.text, user["id"])
-    return {"ok": True}
+        return {"ok": True, "achievements": achievements.check(c, body.course, user["id"])}
 
 
 # ---------- front end ----------

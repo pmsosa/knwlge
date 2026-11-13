@@ -9,6 +9,9 @@ import { signin, password } from "./views/signin.js";
 import people from "./views/people.js";
 import auditView from "./views/audit.js";
 import account from "./views/account.js";
+import printView from "./views/print.js";
+import importView from "./views/import.js";
+import dashboard from "./views/dashboard.js";
 import { enhance } from "./media.js";
 import { removeTutor } from "./tutor.js";
 import { icon, paintIcons } from "./icons.js";
@@ -24,6 +27,9 @@ const routes = [
   [/^#\/people$/, people, "people", "admin", true],
   [/^#\/audit$/, auditView, "audit", "admin", true],
   [/^#\/account$/, account, "", "learner"],
+  [/^#\/print\/([\w-]+)(?:\?answers=1)?$/, printView, "home", "learner"],
+  [/^#\/import$/, importView, "home", "author"],
+  [/^#\/dashboard$/, dashboard, "dashboard", "admin", true],
 ];
 
 const view = document.getElementById("view");

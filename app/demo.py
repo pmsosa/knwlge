@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import sys
 
-from . import audit, auth, db, learning, pipeline
+from . import achievements, audit, auth, db, learning, library, pipeline
 from .tiers import skeleton
 
 
@@ -267,6 +267,89 @@ def demo_team(c) -> None:
         audit.log(c, action, ttype, tid, details, user_id=ids[who])
 
 
+EXTRA = [("Watercolour basics", "Watercolour for Beginners", "dive", "Washes, layering and colour mixing, one small painting at a time.",
+          ["art", "painting"]),
+         ("Conversational Spanish", "Everyday Spanish: Your First Conversations", "bootcamp",
+          "Greetings, ordering food, asking the way and talking about your day, with lots of speaking practice.", ["languages"]),
+         ("The science of bread", "How Bread Works: Yeast, Gluten and the Oven", "dive",
+          "What really happens when flour, water, salt and yeast meet, and how to use it for a better loaf.", ["cooking", "science"]),
+         ("Personal finance", "Money Basics: Budgets, Saving and Investing", "dive",
+          "A calm, practical start on budgeting, emergency funds, debt and index funds. General education, not financial advice.",
+          ["money", "life skills"])]
+TAGS = {"Music": ["music", "science"], "Castles": ["history"], "Astronomy": ["science", "astronomy"], "Jazz": ["music", "history"]}
+
+
+def demo_library(c) -> None:
+    """Tags, more courses to browse, a pin and course-themed achievements."""
+    for subject, title, depth, summary, tags in EXTRA:
+        cid = make(c, subject, title, depth, summary, 0, False)
+        library.set_tags(c, cid, tags)
+    for word, tags in TAGS.items():
+        for r in c.execute("SELECT id FROM courses WHERE title LIKE ?", (f"%{word}%",)).fetchall():
+            library.set_tags(c, r["id"], tags)
+    music = c.execute("SELECT id FROM courses WHERE title LIKE '%Music%'").fetchone()["id"]
+    library.pin(c, music, db.OWNER_ID, True)
+    achievements.store_planned(c, music, [
+        {"title": "First standing wave", "description": "Finished the session on vibrations and waves.", "rule": "finish_session", "slot": 1},
+        {"title": "Perfect pitch(ish)", "description": "Tried every question on pitch and frequency.", "rule": "practice_session", "slot": 2},
+        {"title": "Instrument maker", "description": "Handed in the instrument project.", "rule": "written_session", "slot": 14}],
+        [r["seq"] for r in c.execute("SELECT seq FROM sessions WHERE course_id=?", (music,))])
+    for r in c.execute("SELECT id FROM courses").fetchall():
+        achievements.check(c, r["id"], db.OWNER_ID)
+    # two more providers, so Settings and the dashboard show the choice (made-up keys: nothing here can call out)
+    c.execute("INSERT INTO providers(id, kind, label, base_url, api_key, models_json, tested_at, test_note, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+              ("anth-demo01", "anthropic", "Anthropic (Claude)", "", "sk-ant-demo-not-real-1a2b",
+               db.dumps([{"id": m} for m in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5")]), db.now(),
+               "Works (claude-haiku-5-5): Welcome, curious mind, let's begin!", db.now()))
+    c.execute("INSERT INTO providers(id, kind, label, base_url, api_key, models_json, tested_at, test_note, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+              ("comp-demo02", "compatible", "Ollama on the lab box", "http://192.168.1.20:11434/v1", "",
+               db.dumps([{"id": "qwen3:8b", "price": [0, 0]}, {"id": "llama3.2:3b", "price": [0, 0]}]), db.now(),
+               "Works (qwen3:8b): Hello and welcome, learner!", db.now()))
+    db.set_setting(c, "route_planning", db.dumps({"provider": "anth-demo01", "model": "claude-opus-5-5"}))
+    db.set_setting(c, "route_research", db.dumps({"provider": "anth-demo01", "model": "claude-sonnet-5-5"}))
+    db.set_setting(c, "route_tutor", db.dumps({"provider": "comp-demo02", "model": "qwen3:8b"}))
+    for kind, cost in [("plan", 0.09), ("reading", 0.04)]:
+        c.execute("INSERT INTO llm_calls(course_id, kind, model, input_tokens, output_tokens, cost_usd, outcome, at, provider) "
+                  "VALUES (?,?,?,?,?,?,?,?,?)", (music, kind, "claude-opus-5-5", 9000, 3000, cost, "ok", db.now(), "anth-demo01"))
+    c.execute("INSERT INTO llm_calls(course_id, kind, model, input_tokens, output_tokens, cost_usd, outcome, at, provider) "
+              "VALUES (?,?,?,?,?,?,?,?,?)", (music, "chat", "qwen3:8b", 3000, 600, 0, "ok", db.now(), "comp-demo02"))
+
+
+def demo_team_progress(c) -> None:
+    """Kim and Sam study a little and share it, for the dashboard and the feed."""
+    ids = {r["username"]: r["id"] for r in c.execute("SELECT id, username FROM users")}
+    stamp = lambda days: (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
+    courses = {w: c.execute("SELECT id FROM courses WHERE title LIKE ?", (f"%{w}%",)).fetchone()["id"]
+               for w in ("Music", "Castles", "Bread", "Spanish")}
+    plan = [("kim", "Music", 4, 5), ("kim", "Bread", 7, 1), ("sam", "Castles", 7, 3), ("sam", "Spanish", 2, 2), ("maya", "Bread", 7, 9)]
+    for who, word, n, days in plan:
+        sessions = c.execute("SELECT id, seq, title FROM sessions WHERE course_id=? ORDER BY seq LIMIT ?", (courses[word], n)).fetchall()
+        for k, s in enumerate(sessions):
+            at = stamp(days - k * 0.5 if days > k * 0.5 else 0)
+            c.execute("INSERT OR IGNORE INTO session_progress(user_id, session_id, started_at, done_at) VALUES (?,?,?,?)",
+                      (ids[who], s["id"], at, at))
+            if who != "maya":
+                c.execute("INSERT INTO activity(at, user_id, kind, course_id, details_json) VALUES (?,?,?,?,?)",
+                          (at, ids[who], "session_done", courses[word], db.dumps({"seq": s["seq"], "title": s["title"]})))
+        total = c.execute("SELECT count(*) AS n FROM sessions WHERE course_id=?", (courses[word],)).fetchone()["n"]
+        if who != "maya" and n >= total:
+            c.execute("INSERT INTO activity(at, user_id, kind, course_id, details_json) VALUES (?,?,?,?,?)",
+                      (stamp(0.2), ids[who], "course_done", courses[word], "{}"))
+        for a in achievements.check(c, courses[word], ids[who]):
+            if who != "maya":
+                c.execute("INSERT INTO activity(at, user_id, kind, course_id, details_json) VALUES (?,?,?,?,?)",
+                          (stamp(0.1), ids[who], "achievement", courses[word], db.dumps({"key": a["key"], "title": a["title"]})))
+        c.execute("INSERT OR REPLACE INTO course_opens(user_id, course_id, at) VALUES (?,?,?)", (ids[who], courses[word], stamp(days / 2)))
+    for who in ("kim", "sam"):
+        c.execute("UPDATE users SET prefs_json=?, last_seen_at=? WHERE id=?", (db.dumps({"share_activity": True}), stamp(0.3), ids[who]))
+    c.execute("UPDATE users SET last_seen_at=? WHERE id=?", (db.now(), ids["maya"]))
+    # a few missed answers in Music session 2, so "where people get stuck" has something to show
+    for it in c.execute("SELECT id FROM items WHERE session_id=? AND qtype IN ('mcq','numeric')", (f"{courses['Music']}-s02",)).fetchall():
+        for who in ("kim", "sam"):
+            c.execute("INSERT INTO attempts(item_id, course_id, created_at, answer, status, score, user_id) VALUES (?,?,?,?,?,?,?)",
+                      (it["id"], courses["Music"], stamp(3), "a guess", "marked", 0, ids[who]))
+
+
 def main() -> None:
     db.init()
     with db.tx() as c:
@@ -303,8 +386,10 @@ def main() -> None:
         for kind, cost in [("plan", 0.06), ("session", 0.41), ("check", 0.03), ("reading", 0.05), ("mark", 0.02)]:
             c.execute("INSERT INTO llm_calls(course_id, kind, model, input_tokens, output_tokens, cost_usd, outcome, at) VALUES (?,?,?,?,?,?,?,?)",
                       (a, kind, "gemini-3.8-flash", 40000, 12000, cost, "ok", db.now()))
+        demo_library(c)
         if "--team" in sys.argv[1:]:
             demo_team(c)
+            demo_team_progress(c)
     print("demo data written" + (" (with team accounts: " + ", ".join(f"{u} / {p}" for u, _, _, p in DEMO_PEOPLE) + ")"
                                  if "--team" in sys.argv[1:] else ""))
 

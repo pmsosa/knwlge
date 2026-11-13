@@ -219,6 +219,35 @@ label.field { display: block; margin: 0 0 4px; font-size: 13px; font-weight: 500
 .card h3 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 1.12rem; }
 .card .sum { color: var(--iron); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card .foot { margin-top: auto; display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--graphite); }
+.card { position: relative; }
+.card h3 a.stretch { color: inherit; text-decoration: none; }
+.card h3 a.stretch::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }   /* the whole card opens it */
+.card h3 a.stretch:focus-visible { outline: none; }
+.card:has(a.stretch:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.card.pinned { border-color: var(--smoke); }
+.card-actions { display: inline-flex; gap: 2px; position: relative; z-index: 1; flex: none; margin: -4px -6px 0 auto; }   /* above the stretched link */
+.card > .spread { flex-wrap: nowrap; align-items: flex-start; }
+.card > .spread > .row { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.icon-btn { min-height: 28px; width: 28px; padding: 0; border-radius: 50%; background: transparent; color: var(--iron); border-color: transparent; }
+.icon-btn:hover { opacity: 1; color: var(--ink); background: var(--mist); border-color: var(--stone); }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: 11px; color: var(--iron); background: var(--mist); border-radius: var(--r-tag); padding: 1px 7px; }
+.library-tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 0 0 18px; }
+.library-tools .search { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; max-width: 26rem; padding: 0 12px;
+  background: var(--bright); border: 1px solid var(--stone); border-radius: var(--r-btn); color: var(--graphite); }
+.library-tools .search:focus-within { border-color: var(--ink); }
+.library-tools .search input { border: 0; background: transparent; padding: 8px 0; flex: 1; min-width: 0; outline: none; box-shadow: none; }
+.tagbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 28px; padding: 3px 11px; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
+  background: var(--card); color: var(--iron); border: 1px solid var(--stone); border-radius: 999px; }
+.chip:hover { opacity: 1; color: var(--ink); border-color: var(--smoke); }
+.chip.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.shelf { margin-bottom: 26px; }
+.shelf-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.shelf-head h2 { margin: 0; font-size: 1.15rem; }
+.shelf.available { padding-top: 22px; border-top: 1px solid var(--stone); }
+.shelf-hint { margin: -4px 0 12px; }
+.empty-shelf { grid-column: 1 / -1; margin: 0; padding: 18px; border-style: dashed; background: transparent; }
 .empty { text-align: left; padding: 28px; }
 .empty .big { font: 400 1.7rem/1.1 var(--display); letter-spacing: -.015em; margin-bottom: 10px; }
 
@@ -563,3 +592,68 @@ button.link svg.i { margin-right: 2px; }
 @media (prefers-reduced-motion: reduce) { .rm-track, .rm-track span { transition: none; } }
 .whoami .who-name { color: inherit; text-decoration: none; border-bottom: 1px dashed transparent; }
 .whoami .who-name:hover { color: var(--ink); border-bottom-color: var(--smoke); }
+
+/* ---------- v0.3: achievements, dashboard, feed ---------- */
+.course-acts { gap: 2px; margin: 0 0 10px -6px; }
+.achs { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.ach { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px dashed var(--stone); border-radius: var(--r-card); color: var(--graphite); }
+.ach.got { border-style: solid; background: var(--card); color: var(--ink); }
+.ach .pill { margin-left: 4px; vertical-align: 1px; }
+.ach-icon { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--mist); color: var(--pewter); }
+.ach.got .ach-icon { background: var(--ink); color: var(--on-ink); }
+.ach-edit { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--stone); border-radius: var(--r-card); }
+.stats-grid { margin-bottom: 14px; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+table.dash td { vertical-align: top; }
+.dash-course { padding: 12px 0; border-bottom: 1px solid var(--stone); }
+.dash-course:last-of-type { border-bottom: 0; }
+.funnel { display: flex; align-items: flex-end; gap: 3px; height: 46px; margin-top: 8px; }
+.funnel span { flex: 1; min-width: 3px; max-width: 26px; background: var(--wash); border-radius: 2px 2px 0 0; }
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--stone); font-size: 14px; }
+.feed li:last-child { border-bottom: 0; }
+.feed li > svg { flex: none; color: var(--graphite); transform: translateY(2px); }
+ul.feed.panel { padding: 6px 16px; }
+
+/* ---------- printing a course ---------- */
+.print-bar { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; justify-content: space-between; margin-bottom: 18px;
+  padding: 10px 14px; background: var(--card); border: 1px solid var(--stone); border-radius: var(--r-card); }
+.print-doc { max-width: 46rem; margin: 0 auto; background: var(--card); color: var(--ink); padding: 40px 48px; border: 1px solid var(--stone);
+  border-radius: var(--r-card); line-height: 1.6; }
+.print-cover { padding-bottom: 20px; margin-bottom: 26px; border-bottom: 2px solid var(--ink); }
+.print-cover h1 { margin: 6px 0 10px; }
+.print-toc { columns: 2; column-gap: 28px; font-size: 14px; }
+.print-session { margin-top: 30px; }
+.print-session h2 { margin-top: 4px; }
+.print-example { margin: 12px 0; padding: 10px 14px; border-left: 3px solid var(--stone); background: var(--mist); }
+.print-checks { margin: 12px 0; padding: 10px 14px; border: 1px solid var(--stone); border-radius: var(--r-card); }
+.print-q { margin: 6px 0 12px; }
+.print-opts { list-style: "○  "; padding-left: 1.4em; }
+.print-lines { height: 4.5em; margin: 6px 0; background: repeating-linear-gradient(transparent, transparent 1.45em, var(--stone) 1.45em, var(--stone) calc(1.45em + 1px)); }
+.print-answer { margin-top: 4px; padding: 6px 10px; background: var(--mist); border-radius: var(--r-btn); font-size: 14px; }
+.print-note { font-size: 13px; color: var(--iron); font-style: italic; }
+.print-doc figure.media { break-inside: avoid; }
+@media (max-width: 640px) { .print-doc { padding: 22px 18px; } .print-toc { columns: 1; } }
+@media print {
+  :root { --canvas: #fff; --card: #fff; --mist: #f4f4f4; --ink: #000; }
+  html, body { height: auto !important; overflow: visible !important; display: block !important; background: #fff !important; }
+  .top, #toast, #activity, .no-print, .tutor-panel, .tutor-fab, .banner { display: none !important; }
+  #view, #view.printing { overflow: visible !important; height: auto !important; padding: 0 !important; }
+  .print-doc { border: 0; padding: 0; max-width: none; }
+  .print-session { break-before: page; }
+  .print-session h2, .print-session h3 { break-after: avoid; }
+  .print-checks, .print-example, .print-q { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+}
+
+/* ---------- settings: providers and roles ---------- */
+.prov { padding: 12px 14px; border: 1px solid var(--stone); border-radius: var(--r-card); background: var(--bright); display: grid; gap: 4px; }
+.prov .prices { margin-top: 6px; }
+.price-rows { display: grid; gap: 4px; margin: 6px 0; max-height: 260px; overflow: auto; }
+.price-row { display: grid; grid-template-columns: minmax(0, 1fr) 6rem 6rem; gap: 6px; align-items: center; }
+.price-row input { padding: 4px 6px; }
+.route { padding-bottom: 10px; border-bottom: 1px solid var(--stone); }
+.route .row > select { width: auto; flex: 0 1 17rem; min-width: 0; }
+.route .row > select.rmodel { flex-basis: 20rem; }
+.route:last-of-type { border-bottom: 0; }
+#addprov summary { cursor: pointer; }

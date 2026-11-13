@@ -16,6 +16,17 @@ Tick items off here as they land.
 - [x] Everyone can change their own display name (`#/account`)
 - [x] Installable app (manifest and service worker), phone layout with a menu, Lucide icons
 - [x] User guide, technical wiki, browser smoke test and repeatable screenshots (`tools/e2e.sh`)
+- [x] **v0.3** Home page: my courses (started, added or pinned) above everything available, with search and shared tags
+      (suggested with the plan, edited by authors)
+- [x] **v0.3** Other AI providers: OpenAI, Anthropic and any OpenAI-compatible endpoint beside Gemini, a provider and
+      model per role, keys tested on entry, model lists filled in, prices per provider (built in for Gemini and Claude,
+      entered by an admin for the rest)
+- [x] **v0.3** `.knwlge` course packages (optionally with your own progress) and an import that treats them as untrusted
+- [x] **v0.3** Print a course (print stylesheet, optional answers) for Save as PDF
+- [x] **v0.3** Admin dashboard (team mode): who is taking what, per-session progress, where people get stuck, spend by
+      course, person and provider
+- [x] **v0.3** Opt-in activity feed (off by default per person, an admin switch for everyone) and achievements (a
+      built-in set plus course-themed ones written with the plan, editable by authors)
 
 ## Phase 2: shared courses, flags and AI edits
 
@@ -30,25 +41,23 @@ Tick items off here as they land.
 - [ ] Course page shows the author, last update and version
 - [ ] Optional: "recommend to" people or the whole group (a nudge, no deadlines)
 
-## Phase 3: other AI providers
+## Phase 3: other AI providers (follow-ups)
 
-- [ ] One provider layer: OpenAI, Anthropic, and any OpenAI-compatible endpoint (LiteLLM, local models), next to Gemini
-- [ ] Keys tested on entry, model lists filled in, a provider and model per role, price tables per provider
+- [x] Web search for OpenAI (its Responses API) and for OpenAI-compatible endpoints that offer it (LiteLLM's
+      `web_search_options`, switched on per endpoint)
+- [ ] Price lists fetched for OpenAI models instead of typed in
 
-## Phase 4: dashboard, social, achievements, welcome
+## Phase 4: welcome
 
-- [ ] Admin dashboard: who is taking what, where people get stuck, spend per course, person and provider
-- [ ] Opt-in activity feed (off by default) and per-course achievements
 - [ ] A one-time welcome screen, and a one-line reminder under upload and submit buttons about what not to upload
 
 ## Phase 5: hands-on labs
 
 - [ ] Its own design document first: per-learner sandboxes on a separate machine, started and checked by Knwlge
 
-## Export and import
+## Export and import (follow-ups)
 
-- [ ] A `.knwlge` course package (plan, sessions, questions, media, reading) and a safe import (treated as untrusted)
-- [ ] Print a course to PDF (a print stylesheet first)
+- [ ] A server-made PDF (headless Chromium) if printing from the browser isn't enough
 
 ## Known limits
 

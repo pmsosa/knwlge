@@ -85,7 +85,13 @@ def plan_schema(n_slots: int) -> dict:
         prerequisites=arr(S),
         readiness=obj(teaching=enum(*BANDS), feedback=enum(*BANDS), weak_spots=arr(S), safety_note=S),
         sessions=arr(obj(slot=I, title=S, topics=arr(S), objectives=arr(S))),
+        tags=arr(S),
+        achievements=arr(obj(title=S, description=S, rule=enum(*ACHIEVEMENT_RULES), slot=I)),
     )
+
+
+# what a course-themed achievement can be earned for (checked by the app, never by the model)
+ACHIEVEMENT_RULES = ("finish_session", "practice_session", "written_session")
 
 
 def _slots_text(slots: list[dict]) -> str:
@@ -129,6 +135,11 @@ Return:
 audio, things that change fast). safety_note: if mistakes in this subject could hurt someone (health, medicine, law, \
 money, electrical or mechanical work, chemistry, driving, flying), say plainly that this is general self-study, not \
 professional advice; otherwise an empty string.
+- tags: 2-3 short lower-case subject tags for finding the course in a library (e.g. "astronomy", "science").
+- achievements: 2-3 playful, course-themed achievements (title: 2-4 words like "First star chart"; description: one \
+sentence on what was done). Each is earned in one session slot: rule finish_session (finishing it), practice_session \
+(trying every practice question in it) or written_session (sending its written exercise or project). Pick memorable \
+moments (a first real result, the project, a hard checkpoint), never speed.
 If the learner attached their own materials, shape the course around them where they fit."""
     return research({"role": "pro", "system": HOUSE, "prompt": prompt, "schema": plan_schema(len(slots)), "materials": True},
                     live)

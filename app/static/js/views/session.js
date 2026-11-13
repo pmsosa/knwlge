@@ -1,4 +1,4 @@
-import { $, $$, act, api, el, html, raw, toast, hours, KIND_LABEL } from "../util.js";
+import { $, $$, act, api, celebrate, el, html, raw, toast, hours, KIND_LABEL } from "../util.js";
 import { QUIZ_WIDGETS, readingSwitch, wireReadingSwitch } from "../readingmode.js";
 import { icon, KIND_ICON } from "../icons.js";
 import { md } from "../md.js";
@@ -241,12 +241,13 @@ function wrapup(s, content, isProject) {
   </div>`);
   box.querySelector('[data-act="compare"]')?.addEventListener("click", () => { box.querySelector(".keys").hidden = false; });
   box.querySelector('[data-act="finish"]').addEventListener("click", (e) => act(e.currentTarget, async () => {
-    await api(`/api/sessions/${s.id}/finish`, { method: "POST", json: { summary: box.querySelector("#summary").value } });
+    const r = await api(`/api/sessions/${s.id}/finish`, { method: "POST", json: { summary: box.querySelector("#summary").value } });
+    celebrate(r.achievements);
     box.querySelector(".keys").hidden = false;
     if (s.done) return toast("Saved.");
     toast(s.next ? "Nice work. On to the next one whenever you like." : "That's the whole course. Well done!");
     s.done = true;
-    if (s.next) setTimeout(() => { location.hash = `#/session/${s.next.id}`; }, 1200);
+    if (s.next) setTimeout(() => { location.hash = `#/session/${s.next.id}`; }, r.achievements && r.achievements.length ? 2600 : 1200);
   }));
   box.querySelector('[data-act="reopen"]')?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     await api(`/api/sessions/${s.id}/reopen`, { method: "POST" });
@@ -266,10 +267,11 @@ function readingWrapup(s, w) {
     </div>
   </div>`);
   box.querySelector('[data-act="finish"]')?.addEventListener("click", (e) => act(e.currentTarget, async () => {
-    await api(`/api/sessions/${s.id}/finish`, { method: "POST", json: { summary: s.summary_note || "" } });
+    const r = await api(`/api/sessions/${s.id}/finish`, { method: "POST", json: { summary: s.summary_note || "" } });
+    celebrate(r.achievements);
     toast(s.next ? "Marked as read. On to the next one whenever you like." : "That's the whole course read. Well done!");
     s.done = true;
-    if (s.next) setTimeout(() => { location.hash = `#/session/${s.next.id}`; }, 1200);
+    if (s.next) setTimeout(() => { location.hash = `#/session/${s.next.id}`; }, r.achievements && r.achievements.length ? 2600 : 1200);
     else box.querySelector(".row").innerHTML = `<span class="small muted">${icon("check", 14)} Read</span>`;
   }));
   box.querySelector('[data-act="reopen"]')?.addEventListener("click", (e) => act(e.currentTarget, async () => {

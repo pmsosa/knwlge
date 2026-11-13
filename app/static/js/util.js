@@ -65,6 +65,11 @@ export function toast(msg, bad = false) {
   setTimeout(() => t.remove(), bad ? 6000 : 3000);
 }
 
+// Newly earned achievements (from a finish, an answer or a tutor question), one toast each, after any other toast.
+export function celebrate(list) {
+  (list || []).forEach((a, i) => setTimeout(() => toast(`Achievement: ${a.title}. ${a.description}`), 900 * (i + 1)));
+}
+
 // Run an action from a button: disables it meanwhile and shows errors as a toast.
 export async function act(button, fn) {
   if (button) button.disabled = true;
