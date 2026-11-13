@@ -88,7 +88,7 @@ model. An admin (you, in personal mode) opens **Settings** and, under **AI provi
 [Google AI Studio](https://aistudio.google.com/apikey) into the Google Gemini box and presses **save** (it's tested
 straight away). To use another provider, open **Add a provider** instead and then pick it under **Who does what**.
 Keys stay on the server: they're never sent to a browser and never shown again (only the last few characters).
-Live research and the reading list need web search: a paid-tier Gemini key or Claude; other providers write without
-it and say so.
+Live research and the reading list need web search: a paid-tier Gemini key, Claude, OpenAI, or a LiteLLM endpoint set
+to search; local models write without it and say so.
 
 More: [Administration](administration.md).

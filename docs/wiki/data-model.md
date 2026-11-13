@@ -20,7 +20,7 @@ See [index](index.md). Schema and upgrades: [app/db.py](../../app/db.py). `SCHEM
 | `chat_messages` | Tutor conversations, per course, scope (`course`, a session id or an item id) and person |
 | `jobs` | The queue: kind, ref, priority, status, attempts, request and result JSON, error, wait reason, `user_id` |
 | `llm_calls` | Every AI call: `provider` (NULL for Gemini), model, tokens, searches, cost, outcome, course, kind, person |
-| `providers` | AI providers besides the built-in Gemini: kind, label, base URL, key (server-side only), model list with optional prices, last test ([providers](providers.md)) |
+| `providers` | AI providers besides the built-in Gemini: kind, label, base URL, key (server-side only), model list with optional prices, whether it searches and its search price, last test ([providers](providers.md)) |
 | `achievements`, `user_achievements` | Course-themed achievements (title, description, rule, slot) and who earned what, built-in ones included ([library-and-people](library-and-people.md)) |
 | `activity` | The opt-in feed: who, what (`session_done`, `course_done`, `achievement`), course, when |
 | `users`, `login_sessions` | Accounts and sign-ins ([auth](auth.md)) |

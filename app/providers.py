@@ -25,9 +25,10 @@ from .gemini import GeminiError, Result
 
 KINDS = {
     "gemini": {"label": "Google Gemini", "search": True, "images": True, "pdf": True, "needs_key": True, "base_url": ""},
-    "openai": {"label": "OpenAI", "search": False, "images": True, "pdf": True, "needs_key": True,
+    "openai": {"label": "OpenAI", "search": True, "images": True, "pdf": True, "needs_key": True,
                "base_url": "https://api.openai.com/v1"},
     "anthropic": {"label": "Anthropic (Claude)", "search": True, "images": False, "pdf": True, "needs_key": True, "base_url": ""},
+    # compatible endpoints search only when an admin says so (LiteLLM's web_search_options, if its models have it)
     "compatible": {"label": "OpenAI-compatible (LiteLLM, Ollama, vLLM...)", "search": False, "images": False, "pdf": False,
                    "needs_key": False, "base_url": ""},
 }
@@ -80,7 +81,7 @@ def _gemini_row(c: sqlite3.Connection) -> dict:
             "api_key": db.get_setting(c, "gemini_api_key") or "",
             "models": db.loads(db.get_setting(c, "gemini_models"), None) or [{"id": m["id"]} for m in pricing.KNOWN_MODELS],
             "tested_at": db.get_setting(c, "gemini_tested_at"), "test_note": db.get_setting(c, "gemini_test_note") or "",
-            "builtin": True}
+            "builtin": True, "search": True, "search_price": None}
 
 
 def get(c: sqlite3.Connection, pid: str) -> dict | None:
@@ -90,7 +91,9 @@ def get(c: sqlite3.Connection, pid: str) -> dict | None:
     if r is None:
         return None
     return {"id": r["id"], "kind": r["kind"], "label": r["label"], "base_url": r["base_url"], "api_key": r["api_key"],
-            "models": db.loads(r["models_json"], []), "tested_at": r["tested_at"], "test_note": r["test_note"], "builtin": False}
+            "models": db.loads(r["models_json"], []), "tested_at": r["tested_at"], "test_note": r["test_note"], "builtin": False,
+            "search": bool(KINDS[r["kind"]]["search"] or (r["kind"] == "compatible" and r["search"])),
+            "search_price": r["search_price"]}
 
 
 def all_providers(c: sqlite3.Connection) -> list[dict]:
@@ -111,8 +114,8 @@ def public(p: dict) -> dict:
     k = KINDS[p["kind"]]
     return {"id": p["id"], "kind": p["kind"], "kind_label": k["label"], "label": p["label"], "base_url": p["base_url"],
             "key_hint": f"…{p['api_key'][-4:]}" if p["api_key"] else None, "models": p["models"], "tested_at": p["tested_at"],
-            "test_note": p["test_note"], "builtin": p["builtin"],
-            "can": {"search": k["search"], "images": k["images"], "pdf": k["pdf"]}}
+            "test_note": p["test_note"], "builtin": p["builtin"], "search_price": p.get("search_price"),
+            "can": {"search": bool(p.get("search")), "images": k["images"], "pdf": k["pdf"]}}
 
 
 def _check_url(url: str) -> str:
@@ -129,7 +132,16 @@ def _check_key(key: str) -> str:
     return key
 
 
-def add(c: sqlite3.Connection, kind: str, label: str, base_url: str, api_key: str) -> str:
+def _check_search_price(v: float | None) -> float | None:
+    if v is None:
+        return None
+    v = float(v)
+    if not 0 <= v <= 1000:
+        raise ValueError("The search price is dollars per 1,000 searches, between 0 and 1,000.")
+    return v
+
+
+def add(c: sqlite3.Connection, kind: str, label: str, base_url: str, api_key: str, search: bool = False) -> str:
     if kind not in KINDS or kind == "gemini":
         raise ValueError("Pick OpenAI, Anthropic or an OpenAI-compatible endpoint.")
     base_url = _check_url(base_url) or KINDS[kind]["base_url"]
@@ -139,13 +151,14 @@ def add(c: sqlite3.Connection, kind: str, label: str, base_url: str, api_key: st
     if KINDS[kind]["needs_key"] and not api_key:
         raise ValueError("Paste the API key.")
     pid = f"{kind[:4]}-{secrets.token_hex(3)}"
-    c.execute("INSERT INTO providers(id, kind, label, base_url, api_key, created_at) VALUES (?,?,?,?,?,?)",
-              (pid, kind, (label.strip() or KINDS[kind]["label"])[:60], base_url, api_key, db.now()))
+    c.execute("INSERT INTO providers(id, kind, label, base_url, api_key, search, created_at) VALUES (?,?,?,?,?,?,?)",
+              (pid, kind, (label.strip() or KINDS[kind]["label"])[:60], base_url, api_key,
+               int(bool(search) and kind == "compatible"), db.now()))
     return pid
 
 
 def update(c: sqlite3.Connection, pid: str, label: str | None = None, base_url: str | None = None, api_key: str | None = None,
-           prices: dict | None = None) -> None:
+           prices: dict | None = None, search: bool | None = None, search_price: float | None | str = "keep") -> None:
     p = get(c, pid)
     if p is None:
         raise ValueError("That provider doesn't exist.")
@@ -164,6 +177,10 @@ def update(c: sqlite3.Connection, pid: str, label: str | None = None, base_url: 
         fields["api_key"] = _check_key(api_key)
     if prices is not None:
         fields["models_json"] = db.dumps(_with_prices(p["models"], prices))
+    if search is not None and p["kind"] == "compatible":
+        fields["search"] = int(bool(search))
+    if search_price != "keep" and p["kind"] in ("openai", "compatible"):
+        fields["search_price"] = _check_search_price(search_price)   # None: back to the built-in price (or free)
     if fields:
         c.execute(f"UPDATE providers SET {', '.join(f'{k}=?' for k in fields)} WHERE id=?", (*fields.values(), pid))
 
@@ -243,14 +260,18 @@ def generate(p: dict, model: str, system: str, parts: list[dict], schema: dict |
     kind = p["kind"]
     if kind == "gemini":
         return gemini.generate(p["api_key"], model, system, parts, schema=schema, search=search)
-    if search and not KINDS[kind]["search"]:
+    if search and not p.get("search"):
         # no web search here: write without it (reading lists are still checked link by link before they're shown)
         res = generate(p, model, system, parts, schema=schema, search=False)
-        res.search_note = f"{p['label']} can't search the web, so this was written without live research."
+        res.search_note = (f"{p['label']} isn't set to search the web (Settings), so this was written without live research."
+                           if kind == "compatible" else
+                           f"{p['label']} can't search the web, so this was written without live research.")
         return res
     if kind == "anthropic":
         return _anthropic(p, model, system, parts, schema, search)
-    return _openai_chat(p, model, system, parts, schema)
+    if kind == "openai" and search:
+        return _openai_search(p, model, system, parts, schema)
+    return _openai_chat(p, model, system, parts, schema, search)
 
 
 def generate_image(p: dict, model: str, prompt: str, aspect: str = "16:9") -> Result:
@@ -342,9 +363,36 @@ def _chat_content(p: dict, parts: list[dict]) -> list[dict]:
     return out
 
 
-def _openai_chat(p: dict, model: str, system: str, parts: list[dict], schema: dict | None) -> Result:
+def _openai_chat(p: dict, model: str, system: str, parts: list[dict], schema: dict | None, search: bool = False) -> Result:
     body: dict[str, Any] = {"model": model, "messages": [{"role": "system", "content": system},
                                                          {"role": "user", "content": _chat_content(p, parts)}]}
+    if search:
+        # LiteLLM's web_search_options (since v1.71), mapped to each provider's own search; plain OpenAI only takes it on
+        # its *-search-api models. An endpoint that rejects it writes without search and says so.
+        body["web_search_options"] = {"search_context_size": "medium"}
+        try:
+            return _openai_chat_body(p, model, system, schema, body, search=True)
+        except GeminiError as e:
+            if e.kind != "bad_request" or e.status != 400:
+                raise
+            res = _openai_chat(p, model, system, parts, schema, False)
+            res.search_note = f"{p['label']} wouldn't search with this model, so this was written without live research."
+            return res
+    return _openai_chat_body(p, model, system, schema, body)
+
+
+def _citations(annotations) -> list[dict]:
+    """url_citation annotations, flat (Responses) or nested (Chat Completions)."""
+    out = []
+    for a in annotations or []:
+        if isinstance(a, dict) and a.get("type") == "url_citation":
+            a = a.get("url_citation") or a
+            if str(a.get("url", "")).startswith(("http://", "https://")):
+                out.append({"uri": a["url"], "title": a.get("title") or ""})
+    return out
+
+
+def _openai_chat_body(p: dict, model: str, system: str, schema: dict | None, body: dict, search: bool = False) -> Result:
     if schema is not None:
         body["response_format"] = {"type": "json_schema", "json_schema": {"name": "answer", "schema": schema, "strict": False}}
     try:
@@ -364,13 +412,87 @@ def _openai_chat(p: dict, model: str, system: str, parts: list[dict], schema: di
     u = payload.get("usage") or {}
     res = Result(data=None, model=payload.get("model") or model, input_tokens=int(u.get("prompt_tokens") or 0),
                  output_tokens=int(u.get("completion_tokens") or 0))
-    res.calls.append({"model": model, "input": res.input_tokens, "output": res.output_tokens, "search": 0})
+    searches = 0
+    if search:
+        searches = int((u.get("prompt_tokens_details") or {}).get("web_search_requests") or 0)
+        res.sources += _citations(msg.get("annotations"))
+        res.searched = True
+        res.search_queries = searches
+    res.calls.append({"model": model, "input": res.input_tokens, "output": res.output_tokens, "search": searches})
     text = msg.get("content") or ""
     if isinstance(text, list):   # some servers return content parts
         text = "".join(x.get("text", "") for x in text if isinstance(x, dict))
     if not text and choice.get("finish_reason") == "content_filter":
         raise GeminiError("blocked", f"{p['label']} stopped early (content filter).")
     res.data = _parse(text, schema, choice.get("finish_reason") == "length", p["label"])
+    return res
+
+
+def _responses_content(p: dict, parts: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for c in _chat_content(p, parts):
+        if c["type"] == "text":
+            out.append({"type": "input_text", "text": c["text"]})
+        elif c["type"] == "image_url":
+            out.append({"type": "input_image", "image_url": c["image_url"]["url"]})
+        elif c["type"] == "file":
+            out.append({"type": "input_file", **c["file"]})
+    return out
+
+
+def _openai_search(p: dict, model: str, system: str, parts: list[dict], schema: dict | None) -> Result:
+    """OpenAI's web search lives in the Responses API (Chat Completions only searches with the *-search-api models).
+    JSON output with search in one call first; if the model won't combine them, search in plain text and then shape the
+    notes with Chat Completions."""
+    body: dict[str, Any] = {"model": model, "instructions": system,
+                            "input": [{"role": "user", "content": _responses_content(p, parts)}],
+                            "tools": [{"type": "web_search"}]}
+    if schema is not None:
+        body["text"] = {"format": {"type": "json_schema", "name": "answer", "schema": schema, "strict": False}}
+    try:
+        return _responses_call(p, model, body, schema)
+    except GeminiError as e:
+        if schema is None or e.kind not in ("bad_request", "bad_output") or (e.kind == "bad_request" and e.status != 400):
+            raise
+    body.pop("text")
+    body["input"][0]["content"].append({"type": "input_text", "text":
+        "\n\nResearch this with web search and answer in plain text, giving the exact URL of every source."})
+    found = _responses_call(p, model, body, None)
+    srcs = "\n".join(f"- {s['title']}: {s['uri']}" for s in found.sources)
+    shaped = _openai_chat(p, model, system, [gemini.text_part(
+        "Turn these research notes into the requested JSON. Use only facts and URLs that appear in them.\n\n"
+        f"NOTES:\n{found.data}\n\nSEARCH SOURCES:\n{srcs}")], schema)
+    found.add(shaped)
+    found.data = shaped.data
+    return found
+
+
+def _responses_call(p: dict, model: str, body: dict, schema: dict | None) -> Result:
+    payload = _post(p, "/responses", body)
+    u = payload.get("usage") or {}
+    res = Result(data=None, model=payload.get("model") or model, input_tokens=int(u.get("input_tokens") or 0),
+                 output_tokens=int(u.get("output_tokens") or 0))
+    text: list[str] = []
+    for item in payload.get("output") or []:
+        t = item.get("type")
+        if t == "web_search_call":
+            res.search_queries += 1   # billed per call
+            for s in (item.get("action") or {}).get("sources") or []:
+                if isinstance(s, dict) and str(s.get("url", "")).startswith(("http://", "https://")):
+                    res.sources.append({"uri": s["url"], "title": s.get("title") or ""})
+        elif t == "message":
+            for c in item.get("content") or []:
+                if c.get("type") == "refusal":
+                    raise GeminiError("blocked", f"{p['label']} declined: {str(c.get('refusal'))[:200]}")
+                if c.get("type") == "output_text":
+                    text.append(c.get("text") or "")
+                    res.sources += _citations(c.get("annotations"))
+    res.searched = True
+    res.calls.append({"model": model, "input": res.input_tokens, "output": res.output_tokens, "search": res.search_queries})
+    why = (payload.get("incomplete_details") or {}).get("reason") if payload.get("status") == "incomplete" else None
+    if why == "content_filter" and not "".join(text):
+        raise GeminiError("blocked", f"{p['label']} stopped early (content filter).")
+    res.data = _parse("".join(text), schema, why == "max_output_tokens", p["label"])
     return res
 
 

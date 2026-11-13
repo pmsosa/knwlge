@@ -149,7 +149,7 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 - **Checked as it's written** - the app checks every answer key it can, a second model reads each session through, and sessions with major problems are rewritten
 - **Feedback on written work** - per rubric line, with the points added up by the app (each line capped), photos and PDFs of handwritten work accepted
 - **Pictures, sound and things to play with** - Mermaid diagrams, freely licensed pictures and recordings from Wikimedia Commons, optional AI illustrations, YouTube videos, six kinds of interactive exercise and sandboxed experiments; all fetched and served by the app
-- **Live research (optional)** - Google Search while planning, writing and answering, with the sources listed under each session
+- **Live research (optional)** - web search (Google, Claude, OpenAI or a LiteLLM proxy) while planning, writing and answering, with the sources listed under each session
 - **Verified further reading** - books, videos, courses and podcasts, each one looked up before it's shown
 - **Reading mode** - just want to read? Each person can hide the questions, practice, written work and warm-ups on any course; they're still there when you switch it off
 - **A tutor** - a chat bubble on every course and session page; ask about the session, a question (it sees your attempt) or a selected passage

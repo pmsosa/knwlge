@@ -177,7 +177,8 @@ def run_one() -> bool:
                 budget.log_call(c, job_id=job["id"], course_id=job["course_id"], kind=job["kind"], model=call["model"],
                                 input_tokens=call["input"], output_tokens=call["output"], search_queries=call["search"],
                                 outcome="ok", user_id=job["user_id"], provider=prov["id"], provider_kind=prov["kind"],
-                                price=providers.price_for(prov, call["model"]) or providers.price_for(prov, model))
+                                price=providers.price_for(prov, call["model"]) or providers.price_for(prov, model),
+                                search_price=prov.get("search_price"))
             stored = {"image": True} if req.get("image") else res.data   # picture bytes go to a file, not the database
             c.execute("UPDATE jobs SET status='done', result_json=?, error=NULL, updated_at=? WHERE id=?",
                       (db.dumps(stored), db.now(), job["id"]))

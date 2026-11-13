@@ -534,6 +534,7 @@ class ProviderIn(BaseModel):
     label: str = ""
     base_url: str = ""
     api_key: str = ""
+    search: bool = False
 
 
 @app.post("/api/providers")
@@ -541,7 +542,7 @@ def add_provider(body: ProviderIn, user: Me) -> dict:
     """Add a provider, then test it straight away (which also fills in its model list)."""
     admin(user)
     with db.tx() as c:
-        pid = providers.add(c, body.kind, body.label, body.base_url, body.api_key)
+        pid = providers.add(c, body.kind, body.label, body.base_url, body.api_key, body.search)
         audit.log(c, "provider.added", "provider", pid, {"kind": body.kind, "label": body.label[:60],
                                                          "base_url": body.base_url[:200]})
     out = providers.test(db.tx, pid)
@@ -553,13 +554,17 @@ class ProviderEdit(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     prices: dict[str, list[float] | None] | None = None
+    search: bool | None = None
+    search_price: float | None = None
+    clear_search_price: bool = False
 
 
 @app.put("/api/providers/{pid}")
 def edit_provider(pid: str, body: ProviderEdit, user: Me) -> dict:
     admin(user)
     with db.tx() as c:
-        providers.update(c, pid, body.label, body.base_url, body.api_key, body.prices)
+        sp = None if body.clear_search_price else body.search_price if body.search_price is not None else "keep"
+        providers.update(c, pid, body.label, body.base_url, body.api_key, body.prices, body.search, sp)
         details: dict[str, Any] = {}
         if body.api_key:
             details["key_ends_with"] = body.api_key.strip()[-4:]
@@ -567,6 +572,10 @@ def edit_provider(pid: str, body: ProviderEdit, user: Me) -> dict:
             details["base_url"] = body.base_url[:200]
         if body.prices is not None:
             details["prices"] = body.prices
+        if body.search is not None:
+            details["search"] = body.search
+        if body.search_price is not None or body.clear_search_price:
+            details["search_price"] = body.search_price
         audit.log(c, "provider.changed", "provider", pid, details)
         jobs.resume_waiting(c)
         return providers.public(providers.get(c, pid))

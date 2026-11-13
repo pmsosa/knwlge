@@ -42,12 +42,17 @@ def over_cap(c: sqlite3.Connection) -> bool:
 def log_call(c: sqlite3.Connection, *, job_id: int | None, course_id: str | None, kind: str, model: str,
              input_tokens: int, output_tokens: int, search_queries: int, outcome: str, thinking_tokens: int = 0,
              user_id: int | None = None, provider: str | None = None, provider_kind: str = "gemini",
-             price: tuple[float, float] | None = None) -> float | None:
+             price: tuple[float, float] | None = None, search_price: float | None = None) -> float | None:
     today = dt.date.today()
     cost = pricing.token_cost(model, input_tokens, output_tokens, today, price)
     if cost is not None and search_queries:
-        cost += (search_queries * pricing.CLAUDE_SEARCH_USD if provider_kind == "anthropic"
-                 else pricing.search_cost(search_queries, month_searches(c)))
+        if provider_kind == "gemini":
+            cost += pricing.search_cost(search_queries, month_searches(c))
+        elif search_price is not None:   # $ per 1,000, typed in for an OpenAI-compatible endpoint
+            cost += search_queries * search_price / 1000
+        else:
+            cost += search_queries * (pricing.CLAUDE_SEARCH_USD if provider_kind == "anthropic" else
+                                      pricing.OPENAI_SEARCH_USD if provider_kind == "openai" else 0.0)
     c.execute(
         "INSERT INTO llm_calls(job_id, course_id, kind, model, input_tokens, output_tokens, thinking_tokens, search_queries, "
         "cost_usd, outcome, at, user_id, provider) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",

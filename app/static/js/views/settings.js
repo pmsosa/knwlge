@@ -21,6 +21,12 @@ export default async function settings(view) {
       <button class="ghost small" data-pact="test">${raw(icon("refresh-cw", 14))}Test and list models</button>
       ${raw(p.builtin ? (p.key_hint ? `<button class="link small" data-pact="clearkey">Remove key</button>` : "") : `<button class="link small" data-pact="remove">Remove</button>`)}
     </div>
+    ${raw(p.kind === "openai" || p.kind === "compatible" ? html`<div class="row search-opt" style="margin-top:8px">
+      ${raw(p.kind === "compatible" ? html`<label class="row small" style="gap:6px"><input type="checkbox" data-psearch ${raw(p.can.search ? "checked" : "")}>
+        Can search the web (LiteLLM's <code>web_search_options</code>)</label>` : `<span class="small muted">Web search through the Responses API.</span>`)}
+      <label class="row small" style="gap:6px">$ <input type="number" min="0" step="0.5" data-psprice value="${p.search_price ?? ""}"
+        placeholder="${p.kind === "openai" ? "10" : "0"}" style="width:5.5rem"> per 1,000 searches</label>
+      <button class="ghost small" data-pact="search">Save search</button></div>` : "")}
     <details class="prices"><summary class="small muted">Prices (for Usage)</summary>
       <p class="small faint">Dollars per million tokens. Knwlge knows Gemini's and Claude's prices; add others here (0 for a free local model).
         Calls to models without a price are counted as unknown.</p>
@@ -62,6 +68,8 @@ export default async function settings(view) {
             <input type="text" id="nlabel" placeholder="Name (optional)" style="max-width:14rem"></div>
           <div class="row"><input type="text" id="nurl" placeholder="Address" style="max-width:24rem">
             <input type="password" id="nkey" autocomplete="off" placeholder="API key" style="max-width:20rem"></div>
+          <label class="row small" id="nsearchrow" style="gap:6px"><input type="checkbox" id="nsearch">
+            It can search the web (LiteLLM with <code>web_search_options</code>, for models that support it)</label>
           <p class="small faint" id="nhint" style="margin:0"></p>
           <div><button id="addgo">${raw(icon("plug", 15))}Add and test</button></div>
         </div></details>
@@ -104,20 +112,22 @@ export default async function settings(view) {
     const k = $("#nkind", view).value;
     const meta = s.kinds[k];
     $("#nurl", view).hidden = k === "anthropic";
+    $("#nsearchrow", view).hidden = k !== "compatible";
     $("#nurl", view).value = k === "compatible" ? "" : meta.base_url;
     $("#nurl", view).placeholder = k === "compatible" ? "e.g. http://192.168.1.10:11434/v1 or http://litellm:4000/v1" : "Address";
     $("#nkey", view).placeholder = meta.needs_key ? "API key" : "API key (if the server wants one)";
     $("#nhint", view).textContent = {
-      openai: "Uses Chat Completions. Pictures with an image model such as gpt-image-1. No web search here, so reading lists are written without it (still checked link by link).",
+      openai: "Chat Completions for writing, the Responses API with web search for live research and reading lists ($10 per 1,000 searches). Pictures with an image model such as gpt-image-1.",
       anthropic: "Claude, through Anthropic's own SDK. Has web search for live research and reading lists; can't draw pictures.",
-      compatible: "Anything that speaks the OpenAI API. Local models work, but small ones can struggle to write a whole lesson as JSON; try one role first.",
+      compatible: "Anything that speaks the OpenAI API. Local models work, but small ones can struggle to write a whole lesson as JSON; try one role first. Tick search only if the endpoint really searches (a LiteLLM proxy whose models have it); otherwise those steps are written without it.",
     }[k] || "";
   };
   $("#nkind", view).addEventListener("change", hint);
   hint();
   $("#addgo", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
     const r = await api("/api/providers", { method: "POST", json: { kind: $("#nkind", view).value, label: $("#nlabel", view).value,
-      base_url: $("#nurl", view).hidden ? "" : $("#nurl", view).value, api_key: $("#nkey", view).value } });
+      base_url: $("#nurl", view).hidden ? "" : $("#nurl", view).value, api_key: $("#nkey", view).value,
+      search: $("#nkind", view).value === "compatible" && $("#nsearch", view).checked } });
     toast(r.test.ok ? `Added. ${r.test.message}` : `Added, but the test failed: ${r.test.message}`, !r.test.ok);
     settings(view);
   }));
@@ -148,6 +158,11 @@ export default async function settings(view) {
         } else if (what === "remove") {
           if (!confirm("Remove this provider? Roles that used it go back to Gemini.")) return;
           await api(`/api/providers/${pid}`, { method: "DELETE" });
+        } else if (what === "search") {
+          const box2 = $("[data-psearch]", box), price = $("[data-psprice]", box).value;
+          await api(`/api/providers/${pid}`, { method: "PUT", json: { search: box2 ? box2.checked : null,
+            search_price: price === "" ? null : Number(price), clear_search_price: price === "" } });
+          toast("Saved.");
         } else if (what === "prices") {
           const prices = {};
           $$("[data-in]", box).forEach((i) => {

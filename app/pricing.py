@@ -25,6 +25,7 @@ CLAUDE_PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.00, 5.00),
 }
 CLAUDE_SEARCH_USD = 10.0 / 1000   # Anthropic's web search tool: $10 per 1,000 searches
+OPENAI_SEARCH_USD = 10.0 / 1000   # OpenAI's web_search tool: $10 per 1,000 calls (search content tokens are in the usage)
 
 # Grounding with Google Search on Gemini 3 and newer: billed per search query the model runs.
 SEARCH_FREE_PER_MONTH = 5000

@@ -43,8 +43,8 @@ Tick items off here as they land.
 
 ## Phase 3: other AI providers (follow-ups)
 
-- [ ] Web search for OpenAI (its Responses API) and for OpenAI-compatible endpoints that offer it; today only Gemini
-      and Claude search, and the others write reading lists without it (still checked link by link)
+- [x] Web search for OpenAI (its Responses API) and for OpenAI-compatible endpoints that offer it (LiteLLM's
+      `web_search_options`, switched on per endpoint)
 - [ ] Price lists fetched for OpenAI models instead of typed in
 
 ## Phase 4: welcome

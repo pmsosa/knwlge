@@ -410,3 +410,98 @@ def test_upgrade_keeps_old_model_choices(client):
         db.set_setting(c, "model_pro", "gemini-3.1-pro-preview")
         assert providers.route(c, "planning")[1] == "gemini-3.1-pro-preview"
         assert providers.route(c, "writing")[1] == "gemini-3.8-flash"
+
+
+# ---------- web search on OpenAI and OpenAI-compatible endpoints ----------
+
+def _search_server(seen, responses_fail_with_schema=False, chat_rejects_search=False):
+    def handler(req):
+        body = json.loads(req.content)
+        url = str(req.url)
+        seen.append((url.rsplit("/", 1)[-1], body))
+        if url.endswith("/responses"):
+            if responses_fail_with_schema and "text" in body:
+                return httpx.Response(400, json={"error": {"message": "web_search can't be used with json_schema here"}})
+            answer = '{"ok": true, "message": "found"}' if "text" in body else "Notes: see https://example.org/a"
+            return httpx.Response(200, json={"model": body["model"], "status": "completed", "output": [
+                {"type": "web_search_call", "id": "ws_1", "status": "completed",
+                 "action": {"type": "search", "query": "q", "sources": [{"type": "url", "url": "https://example.org/b"}]}},
+                {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": answer, "annotations": [
+                    {"type": "url_citation", "start_index": 0, "end_index": 4, "url": "https://example.org/a", "title": "A"}]}]}],
+                "usage": {"input_tokens": 300, "output_tokens": 40}})
+        if chat_rejects_search and "web_search_options" in body:
+            return httpx.Response(400, json={"error": {"message": "Unrecognized request argument: web_search_options"}})
+        msg = {"content": '{"ok": true, "message": "shaped"}'}
+        usage = {"prompt_tokens": 100, "completion_tokens": 10}
+        if "web_search_options" in body:
+            msg["annotations"] = [{"type": "url_citation", "url_citation": {"url": "https://example.org/c", "title": "C"}}]
+            usage["prompt_tokens_details"] = {"web_search_requests": 2}
+        return httpx.Response(200, json={"model": body["model"], "choices": [{"message": msg, "finish_reason": "stop"}], "usage": usage})
+    return handler
+
+
+OPENAI = {"id": "open-1", "kind": "openai", "label": "OpenAI", "api_key": "sk-x", "base_url": "https://api.openai.com/v1",
+          "models": [], "search": True, "search_price": None}
+
+
+def test_openai_searches_through_responses(monkeypatch):
+    from app import providers
+    seen = []
+    monkeypatch.setattr(providers, "transport", httpx.MockTransport(_search_server(seen)))
+    res = providers.generate(OPENAI, "gpt-6", "sys", [{"text": "find books"}], schema=providers.TEST_SCHEMA, search=True)
+    (path, body), = seen
+    assert path == "responses" and body["tools"] == [{"type": "web_search"}]
+    assert body["text"]["format"]["type"] == "json_schema" and body["input"][0]["content"][0]["type"] == "input_text"
+    assert res.data == {"ok": True, "message": "found"} and res.searched and res.search_queries == 1
+    assert {s["uri"] for s in res.sources} == {"https://example.org/a", "https://example.org/b"}
+    assert (res.input_tokens, res.output_tokens) == (300, 40)
+    # no search asked: plain Chat Completions
+    seen.clear()
+    providers.generate(OPENAI, "gpt-6", "sys", [{"text": "hi"}], schema=providers.TEST_SCHEMA)
+    assert seen[0][0] == "completions"
+
+
+def test_openai_search_without_json_falls_back_to_two_steps(monkeypatch):
+    from app import providers
+    seen = []
+    monkeypatch.setattr(providers, "transport", httpx.MockTransport(_search_server(seen, responses_fail_with_schema=True)))
+    res = providers.generate(OPENAI, "gpt-6", "sys", [{"text": "find books"}], schema=providers.TEST_SCHEMA, search=True)
+    assert [p for p, _ in seen] == ["responses", "responses", "completions"]
+    assert "https://example.org/a" in seen[2][1]["messages"][1]["content"][0]["text"], "the notes and sources are shaped"
+    assert res.data["message"] == "shaped" and res.search_queries == 1 and len(res.calls) == 2
+
+
+def test_compatible_search_is_opt_in(client, monkeypatch):
+    from app import db, providers
+    seen = []
+    monkeypatch.setattr(providers, "transport", httpx.MockTransport(_search_server(seen)))
+    monkeypatch.setattr(providers, "test", lambda *a, **k: {"ok": True, "message": "Works", "model": None, "models": []})
+    pid = client.post("/api/providers", json={"kind": "compatible", "base_url": "http://litellm.lan:4000/v1"}).json()["id"]
+    with db.tx() as c:
+        p = providers.get(c, pid)
+    res = providers.generate(p, "gemini-via-litellm", "sys", [{"text": "x"}], schema=providers.TEST_SCHEMA, search=True)
+    assert "web_search_options" not in seen[-1][1] and "isn't set to search" in res.search_note
+
+    r = client.put(f"/api/providers/{pid}", json={"search": True, "search_price": 35})
+    assert r.json()["can"]["search"] and r.json()["search_price"] == 35
+    with db.tx() as c:
+        p = providers.get(c, pid)
+    res = providers.generate(p, "gemini-via-litellm", "sys", [{"text": "x"}], schema=providers.TEST_SCHEMA, search=True)
+    assert seen[-1][1]["web_search_options"] == {"search_context_size": "medium"}
+    assert res.search_queries == 2 and res.sources == [{"uri": "https://example.org/c", "title": "C"}] and not res.search_note
+
+    # a model behind it that won't search: written without, and it says so
+    monkeypatch.setattr(providers, "transport", httpx.MockTransport(_search_server(seen, chat_rejects_search=True)))
+    res = providers.generate(p, "llama", "sys", [{"text": "x"}], schema=providers.TEST_SCHEMA, search=True)
+    assert res.data["message"] == "shaped" and "wouldn't search" in res.search_note and res.search_queries == 0
+
+
+def test_search_prices(client):
+    from app import budget, db
+    with db.tx() as c:
+        openai = budget.log_call(c, job_id=None, course_id=None, kind="reading", model="m", input_tokens=0, output_tokens=0,
+                                 search_queries=3, outcome="ok", provider="open-1", provider_kind="openai", price=(0, 0))
+        typed = budget.log_call(c, job_id=None, course_id=None, kind="reading", model="m", input_tokens=0, output_tokens=0,
+                                search_queries=2, outcome="ok", provider="comp-1", provider_kind="compatible", price=(0, 0),
+                                search_price=35)
+    assert openai == pytest.approx(0.03) and typed == pytest.approx(0.07)

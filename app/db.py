@@ -378,6 +378,8 @@ CREATE TABLE IF NOT EXISTS providers (
     models_json TEXT NOT NULL DEFAULT '[]',
     tested_at TEXT,
     test_note TEXT NOT NULL DEFAULT '',
+    search INTEGER NOT NULL DEFAULT 0, -- compatible endpoints: send web_search_options (LiteLLM); OpenAI always searches
+    search_price REAL,                -- $ per 1,000 searches, where Knwlge doesn't know it
     created_at TEXT NOT NULL
 );
 
@@ -419,6 +421,8 @@ def _migrate_to_v4(conn: sqlite3.Connection) -> None:
         ("course_prefs", "pinned", "INTEGER NOT NULL DEFAULT 0"),
         ("course_prefs", "shelf", "TEXT"),          # NULL: automatic (started = mine) | mine | aside
         ("llm_calls", "provider", "TEXT"),
+        ("providers", "search", "INTEGER NOT NULL DEFAULT 0"),
+        ("providers", "search_price", "REAL"),
     ):
         if col not in _cols(conn, table):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")

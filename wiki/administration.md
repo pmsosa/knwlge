@@ -23,13 +23,17 @@ For admins. In personal mode you're the admin; **dashboard**, **people** and **a
 
 **Add a provider** takes:
 
-- **OpenAI**: an API key. Writes through Chat Completions; draws pictures with an image model such as `gpt-image-1`.
-  No web search, so reading lists are written without it (they're still checked link by link).
+- **OpenAI**: an API key. Writes through Chat Completions and searches the web through its Responses API for live
+  research and reading lists ($10 per 1,000 searches, counted in Usage); draws pictures with an image model such as
+  `gpt-image-1`.
 - **Anthropic (Claude)**: an API key. Has web search for live research and reading lists; can't draw pictures. On the
   newest Claude models a declined request is retried on another Claude model by Anthropic itself.
 - **OpenAI-compatible**: the address of anything that speaks the OpenAI API, such as LiteLLM, Ollama
   (`http://<machine>:11434/v1`), vLLM or LM Studio, and a key if it wants one. Small local models can struggle to
-  write a whole lesson; try one role (the tutor, say) before giving them more.
+  write a whole lesson; try one role (the tutor, say) before giving them more. Tick **Can search the web** only if the
+  endpoint really searches: a LiteLLM proxy (v1.71 or newer) whose models support `web_search_options` (Gemini, Claude,
+  xAI, Perplexity, OpenAI's search models). If a model behind it won't, that step is written without search and says
+  so. Type what its searches cost per 1,000 next to it, or they count as free.
 
 Adding one tests it straight away: it lists the models the key can use and asks one of them for a tiny answer. The
 result shows on its card. **test and list models** runs it again.
