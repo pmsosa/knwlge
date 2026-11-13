@@ -158,8 +158,9 @@ const kindLabel = (k) => ({ lesson: "Lesson", review: "Review", checkpoint: "Put
 
 // ---------- the classroom ----------
 
-const TABS = [["sessions", "Sessions"], ["reading", "Further reading"], ["materials", "Materials", true], ["manage", "Course", true]];
-const TAB_ICON = { sessions: "list", reading: "book-open", materials: "paperclip", manage: "sliders-horizontal" };
+const TABS = [["sessions", "Sessions"], ["reading", "Further reading"], ["achievements", "Achievements"], ["materials", "Materials", true],
+  ["manage", "Course", true]];
+const TAB_ICON = { sessions: "list", reading: "book-open", achievements: "award", materials: "paperclip", manage: "sliders-horizontal" };
 const tabsFor = (c) => TABS.filter(([, , editorsOnly]) => !editorsOnly || c.can_edit);
 
 function header(c) {
@@ -168,6 +169,9 @@ function header(c) {
   const building = c.status === "building";
   return html`<p class="crumbs"><a href="#/">Courses</a> › ${c.depth_label}</p>
     <h1>${c.title}</h1><p class="summary">${c.summary}</p>
+    ${raw(c.tags.length ? html`<div class="tags" style="margin-bottom:8px">${c.tags.map((t) => raw(html`<span class="tag">${t}</span>`))}</div>` : "")}
+    <div class="row course-acts">${raw(shelfButtons(c))}
+      <a class="icon-btn" href="#/print/${c.id}" title="Print or save as PDF" aria-label="Print or save as PDF">${raw(icon("printer", 15))}</a></div>
     ${raw(team() ? html`<div class="row small faint" style="gap:6px">${raw(c.visibility === "draft" ? `<span class="pill teal">draft</span>` : "")}
       <span>by ${c.author}</span></div>` : "")}
     <div class="stats">
@@ -182,8 +186,31 @@ function header(c) {
     <div class="rm-box">${raw(readingSwitch(c.reading_mode))}</div>`;
 }
 
+function shelfButtons(c) {
+  const b = (what, ic, label) => html`<button class="icon-btn" data-shelf="${what}" title="${label}" aria-label="${label}">${raw(icon(ic, 15))}</button>`;
+  const mine = c.pinned || c.shelf === "mine" || (c.shelf !== "aside" && (c.progress.done || c.progress.answered || c.progress.started));
+  if (!mine) return b("add", "plus", "Add to my courses");
+  return (c.pinned ? b("unpin", "pin-off", "Unpin from the top") : b("pin", "pin", "Pin to the top of your courses"))
+    + b("aside", "archive", "Move to available (progress is kept)");
+}
+
+function wireShelf(view, c) {
+  $("#head", view).addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-shelf]");
+    if (!b) return;
+    const what = b.dataset.shelf;
+    const json = what === "pin" ? { pinned: true } : what === "unpin" ? { pinned: false } : what === "add" ? { shelf: "mine" } : { shelf: "aside" };
+    try {
+      Object.assign(c, await api(`/api/courses/${c.id}/shelf`, { method: "PUT", json }));
+      toast({ pin: "Pinned to the top of your courses.", unpin: "Unpinned.", add: "Added to your courses.", aside: "Moved to available. Your progress is kept." }[what]);
+      $("#head", view).innerHTML = header(c);
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
 function tabLabel(c, k, l) {
-  const n = k === "reading" ? c.reading.filter((r) => !r.session_id && r.kind !== "source").length : k === "materials" ? c.materials.length : 0;
+  const n = k === "reading" ? c.reading.filter((r) => !r.session_id && r.kind !== "source").length : k === "materials" ? c.materials.length
+    : k === "achievements" ? c.achievements.filter((a) => a.earned_at).length : 0;
   return html`${raw(icon(TAB_ICON[k], 16))}<span>${l}</span>${raw(n ? `<span class="pill">${n}</span>` : "")}`;
 }
 
@@ -195,6 +222,7 @@ function drawClassroom(view, c, tab) {
         class="${k === tab ? "on" : ""}" aria-selected="${k === tab}">${raw(tabLabel(c, k, l))}</button>`))}</nav></aside>
     <section class="pane" id="pane"><div id="err">${raw(errorNote(c))}</div><div id="tab"></div></section></div>`;
   wireRetry(view, c);
+  wireShelf(view, c);
   wireReadingSwitch($("#head", view), c.id, async (on) => {
     c.reading_mode = on;
     $("#head", view).innerHTML = header(c);
@@ -227,6 +255,7 @@ function drawTab(view, c, tab) {
   const box = $("#tab", view);
   if (tab === "reading") return readingTab(box, c);
   if (tab === "materials") return materialsTab(box, c);
+  if (tab === "achievements") return achievementsTab(box, c);
   if (tab === "manage") return manageTab(box, c);
   sessionsTab(box, c);
 }
@@ -271,6 +300,17 @@ function readingTab(box, c) {
       <ul class="materials" style="margin-top:8px">${sources.map((r) => raw(html`<li><a href="${r.url}" target="_blank" rel="noopener noreferrer">${r.title}</a>
         <span class="small faint">${r.session_seq ? `session ${r.session_seq}` : ""}</span></li>`))}</ul></details>` : "")}
     ${raw(c.reading_dropped ? html`<p class="small faint" style="margin-top:1.2rem">${c.reading_dropped} suggestion${c.reading_dropped > 1 ? "s" : ""} left out because the book, video or page couldn't be found.</p>` : "")}`;
+}
+
+function achievementsTab(box, c) {
+  const earned = c.achievements.filter((a) => a.earned_at).length;
+  const badge = (a) => raw(html`<li class="ach ${a.earned_at ? "got" : ""}">
+    <span class="ach-icon">${raw(icon(a.icon, 20))}</span>
+    <div><b>${a.title}</b> ${raw(a.themed ? `<span class="pill teal">this course</span>` : "")}<div class="small muted">${a.description}</div>
+      <div class="small faint">${a.earned_at ? `Earned ${new Date(a.earned_at).toLocaleDateString()}` : "Not yet"}</div></div></li>`);
+  box.innerHTML = html`<h2>Achievements</h2>
+    <p class="muted">For exploring and finishing, never for speed or scores. ${earned ? `You've earned ${earned} of ${c.achievements.length} on this course.` : "Your first one comes with your first finished session."}</p>
+    <ul class="achs">${c.achievements.map(badge)}</ul>`;
 }
 
 function materialsTab(box, c) {
@@ -322,7 +362,21 @@ function manageTab(box, c) {
     <div><label class="field">What lessons can include</label>
       <div class="field-hint">Applies to sessions written from now on (new ones and rewrites).</div>
       <div class="extras" id="extras"></div></div>
-    <div class="row"><a class="button ghost" href="/api/courses/${c.id}/export">${raw(icon("download", 15))}Download as Markdown (zip)</a></div>
+    <div><label class="field" for="tg">Tags</label>
+      <div class="field-hint">Comma-separated. Everyone can filter the home page by them.</div>
+      <div class="row"><input type="text" id="tg" value="${c.tags.join(", ")}" placeholder="e.g. science, astronomy" style="max-width:32rem">
+        <button class="ghost" id="savetags">${raw(icon("tag", 15))}Save tags</button></div></div>
+    <div><label class="field">Course achievements</label>
+      <div class="field-hint">Two or three themed ones, on top of the built-in set. Each is earned in one session.</div>
+      <div id="achedit" class="stack" style="gap:8px"></div>
+      <div class="row" style="margin-top:8px"><button class="ghost small" id="achadd">${raw(icon("plus", 14))}Add one</button>
+        <button class="ghost small" id="achsave">${raw(icon("check", 14))}Save achievements</button></div></div>
+    <div><label class="field">Share or keep a copy</label>
+      <div class="field-hint">A .knwlge package holds the whole course (sessions, questions, pictures, reading list) and imports into any Knwlge.</div>
+      <label class="row small" style="gap:6px;margin:6px 0"><input type="checkbox" id="withprog"> Include my own progress and notes</label>
+      <div class="row"><button class="ghost" id="pkg">${raw(icon("package", 15))}Download course package</button>
+        <a class="button ghost" href="/api/courses/${c.id}/export">${raw(icon("download", 15))}Markdown (zip)</a>
+        <a class="button ghost" href="#/print/${c.id}">${raw(icon("printer", 15))}Print or save as PDF</a></div></div>
     <hr><div class="row"><button class="danger" id="del">${raw(icon("trash-2", 15))}Delete this course</button>
       <span class="small muted">Removes its sessions, ${team() ? "everyone's answers" : "your answers"} and materials. Can't be undone.</span></div>
   </div>`;
@@ -338,6 +392,39 @@ function manageTab(box, c) {
         toast("Saved.");
       } catch (err) { toast(err.message, true); }
     }));
+  });
+  const RULES = [["finish_session", "Finish session"], ["practice_session", "Try every question in session"], ["written_session", "Send the written work in session"]];
+  const slots = c.sessions.map((x) => x.seq);
+  const achRow = (a = { title: "", description: "", rule: { rule: "finish_session", slot: slots[0] } }) => html`<div class="ach-edit" data-key="${a.key || ""}">
+    <input type="text" class="a-title" value="${a.title}" placeholder="Title, e.g. First star chart" maxlength="60">
+    <input type="text" class="a-desc" value="${a.description}" placeholder="What they did, in one sentence" maxlength="200">
+    <div class="row" style="gap:6px"><select class="a-rule">${RULES.map(([k, l]) => raw(html`<option value="${k}" ${raw(a.rule.rule === k ? "selected" : "")}>${l}</option>`))}</select>
+      <select class="a-slot" aria-label="Session">${slots.map((n) => raw(html`<option value="${n}" ${raw(a.rule.slot === n ? "selected" : "")}>${n}</option>`))}</select>
+      <button class="icon-btn a-del" title="Remove" aria-label="Remove this achievement">${raw(icon("x", 14))}</button></div></div>`;
+  const achBox = $("#achedit", box);
+  achBox.innerHTML = c.themed_achievements.map(achRow).join("") || `<p class="small faint" style="margin:0">None yet.</p>`;
+  achBox.addEventListener("click", (e) => {
+    const del = e.target.closest(".a-del");
+    if (del) del.closest(".ach-edit").outerHTML = "";
+  });
+  $("#achadd", box).addEventListener("click", () => {
+    const empty = achBox.querySelector("p");
+    if (empty) empty.outerHTML = "";
+    achBox.insertAdjacentHTML("beforeend", achRow());
+  });
+  $("#achsave", box).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    const items = $$(".ach-edit", achBox).map((r) => ({ key: r.dataset.key || null, title: $(".a-title", r).value, description: $(".a-desc", r).value,
+      rule: $(".a-rule", r).value, slot: Number($(".a-slot", r).value) })).filter((a) => a.title.trim());
+    c.themed_achievements = (await api(`/api/courses/${c.id}/achievements`, { method: "PUT", json: { items } })).themed_achievements;
+    toast("Achievements saved.");
+  }));
+  $("#savetags", box).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    c.tags = (await api(`/api/courses/${c.id}/tags`, { method: "PUT", json: { tags: $("#tg", box).value.split(",") } })).tags;
+    $("#tg", box).value = c.tags.join(", ");
+    toast("Tags saved.");
+  }));
+  $("#pkg", box).addEventListener("click", () => {
+    location.href = `/api/courses/${c.id}/package${$("#withprog", box).checked ? "?progress=1" : ""}`;
   });
   $("#publish", box)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     const publish = c.visibility === "draft";

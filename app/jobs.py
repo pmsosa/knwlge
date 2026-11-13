@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from . import auth, budget, db, gemini, pricing
+from . import auth, budget, db, gemini, pricing, providers
 
 log = logging.getLogger("knwlge.jobs")
 
@@ -151,8 +151,7 @@ def run_one() -> bool:
         if job is None:
             return False
         req = db.loads(job["request_json"], {})
-        key = db.get_setting(c, "gemini_api_key") or ""
-        model = model_for(c, req.get("role", "flash"))
+        prov, model = providers.route(c, providers.role_of(job["kind"], req.get("role")))
         try:
             parts = [] if req.get("image") else build_parts(c, job, req)
         except Exception as e:  # unreadable attachment etc.
@@ -165,9 +164,9 @@ def run_one() -> bool:
 
     try:
         if req.get("image"):
-            res = gemini.generate_image(key, model, req["prompt"], req.get("aspect", "16:9"))
+            res = providers.generate_image(prov, model, req["prompt"], req.get("aspect", "16:9"))
         else:
-            res = _generate(key, model, req, parts)
+            res = _generate(prov, model, req, parts)
         err = None
     except gemini.GeminiError as e:
         res, err = None, e
@@ -177,7 +176,8 @@ def run_one() -> bool:
             for call in res.calls:
                 budget.log_call(c, job_id=job["id"], course_id=job["course_id"], kind=job["kind"], model=call["model"],
                                 input_tokens=call["input"], output_tokens=call["output"], search_queries=call["search"],
-                                outcome="ok", user_id=job["user_id"])
+                                outcome="ok", user_id=job["user_id"], provider=prov["id"], provider_kind=prov["kind"],
+                                price=providers.price_for(prov, call["model"]) or providers.price_for(prov, model))
             stored = {"image": True} if req.get("image") else res.data   # picture bytes go to a file, not the database
             c.execute("UPDATE jobs SET status='done', result_json=?, error=NULL, updated_at=? WHERE id=?",
                       (db.dumps(stored), db.now(), job["id"]))
@@ -188,12 +188,13 @@ def run_one() -> bool:
                 except Exception as e:  # the answer didn't fit what the next step needs
                     log.exception("handler for job %s failed", job["id"])
                     c.execute("UPDATE jobs SET status='failed', error=?, updated_at=? WHERE id=?",
-                              (f"Couldn't use Gemini's answer: {e}", db.now(), job["id"]))
-                    _on_failed(c, job, f"Couldn't use Gemini's answer: {e}")
+                              (f"Couldn't use the AI's answer: {e}", db.now(), job["id"]))
+                    _on_failed(c, job, f"Couldn't use the AI's answer: {e}")
             return True
 
         budget.log_call(c, job_id=job["id"], course_id=job["course_id"], kind=job["kind"], model=model,
-                        input_tokens=0, output_tokens=0, search_queries=0, outcome=err.kind, user_id=job["user_id"])
+                        input_tokens=0, output_tokens=0, search_queries=0, outcome=err.kind, user_id=job["user_id"],
+                        provider=prov["id"], provider_kind=prov["kind"])
         attempts = job["attempts"]
         if err.kind == "rate_limit":
             c.execute("UPDATE jobs SET status='waiting', wait_reason='rate_limit', error=?, next_attempt_at=?, updated_at=? "
@@ -211,16 +212,16 @@ def run_one() -> bool:
     return True
 
 
-def _generate(key: str, model: str, req: dict, parts: list[dict]) -> gemini.Result:
-    """A text call. When search is optional (live research) and Gemini won't search (free-tier keys can't, some models
-    refuse), write without it instead of failing, and say why on the result."""
+def _generate(prov: dict, model: str, req: dict, parts: list[dict]) -> gemini.Result:
+    """A text call. When search is optional (live research) and the provider won't search (Gemini free-tier keys can't,
+    some models refuse), write without it instead of failing, and say why on the result."""
     search = bool(req.get("search"))
     try:
-        return gemini.generate(key, model, req["system"], parts, schema=req.get("schema"), search=search)
+        return providers.generate(prov, model, req["system"], parts, schema=req.get("schema"), search=search)
     except gemini.GeminiError as e:
         if not (search and req.get("search_optional") and e.kind in ("bad_request", "auth", "blocked")):
             raise
-        res = gemini.generate(key, model, req["system"], parts, schema=req.get("schema"), search=False)
+        res = providers.generate(prov, model, req["system"], parts, schema=req.get("schema"), search=False)
         res.search_note = str(e)[:200]
         return res
 

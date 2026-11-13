@@ -20,7 +20,7 @@ def month_spend(c: sqlite3.Connection, now: dt.datetime | None = None) -> float:
 
 
 def month_searches(c: sqlite3.Connection, now: dt.datetime | None = None) -> int:
-    row = c.execute("SELECT coalesce(sum(search_queries), 0) AS s FROM llm_calls WHERE at >= ?",
+    row = c.execute("SELECT coalesce(sum(search_queries), 0) AS s FROM llm_calls WHERE at >= ? AND provider IS NULL",
                     (month_start_utc(now),)).fetchone()
     return int(row["s"])
 
@@ -41,16 +41,18 @@ def over_cap(c: sqlite3.Connection) -> bool:
 
 def log_call(c: sqlite3.Connection, *, job_id: int | None, course_id: str | None, kind: str, model: str,
              input_tokens: int, output_tokens: int, search_queries: int, outcome: str, thinking_tokens: int = 0,
-             user_id: int | None = None) -> float | None:
+             user_id: int | None = None, provider: str | None = None, provider_kind: str = "gemini",
+             price: tuple[float, float] | None = None) -> float | None:
     today = dt.date.today()
-    cost = pricing.token_cost(model, input_tokens, output_tokens, today)
+    cost = pricing.token_cost(model, input_tokens, output_tokens, today, price)
     if cost is not None and search_queries:
-        cost += pricing.search_cost(search_queries, month_searches(c))
+        cost += (search_queries * pricing.CLAUDE_SEARCH_USD if provider_kind == "anthropic"
+                 else pricing.search_cost(search_queries, month_searches(c)))
     c.execute(
         "INSERT INTO llm_calls(job_id, course_id, kind, model, input_tokens, output_tokens, thinking_tokens, search_queries, "
-        "cost_usd, outcome, at, user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "cost_usd, outcome, at, user_id, provider) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (job_id, course_id, kind, model, input_tokens, output_tokens, thinking_tokens, search_queries, cost, outcome, db.now(),
-         user_id),
+         user_id, None if provider in (None, "gemini") else provider),
     )
     return cost
 

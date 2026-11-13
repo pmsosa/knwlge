@@ -315,7 +315,7 @@ def course_progress(c: sqlite3.Connection, course_id: str, uid: int) -> dict:
     done = sum(1 for s in ss if s["done_at"])
     nxt = next((s["id"] for s in ss if not s["done_at"] and s["state"] == "ready"), None)
     per = [session_progress(c, s["id"], uid) for s in ss]
-    return {"sessions": len(ss), "done": done, "next": nxt,
+    return {"sessions": len(ss), "done": done, "next": nxt, "started": sum(1 for s in ss if s["started_at"] or s["done_at"]),
             "answered": sum(p["tried"] for p in per), "written_done": sum(p["written_done"] for p in per),
             "due_reviews": c.execute("SELECT count(*) AS n FROM review_queue WHERE course_id=? AND user_id=? AND due_at <= ?",
                                      (course_id, uid, db.now())).fetchone()["n"]}

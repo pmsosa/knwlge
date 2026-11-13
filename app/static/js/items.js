@@ -1,5 +1,5 @@
 // Questions, exercises and projects: answering them, feedback, showing answers, and editing. The tutor lives in tutor.js.
-import { $, act, api, el, esc, html, raw, toast } from "./util.js";
+import { $, act, api, celebrate, el, esc, html, raw, toast } from "./util.js";
 import { icon } from "./icons.js";
 import { openChat } from "./tutor.js";
 import { md } from "./md.js";
@@ -132,6 +132,7 @@ function wire(box, item, ctx, getAnswer, getFiles = () => []) {
     form.append("context", ctx.warmup ? "warmup" : "session");
     for (const f of getFiles()) form.append("files", f);
     const updated = await api(`/api/items/${item.id}/attempts`, { method: "POST", form });
+    celebrate(updated.achievements);
     if (ctx.warmup) updated.from_session = item.from_session;
     replace(box, updated, ctx);
     ctx.onChange?.();

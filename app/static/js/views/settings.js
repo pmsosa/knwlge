@@ -1,26 +1,49 @@
-import { $, act, api, html, raw, toast } from "../util.js";
+import { $, $$, act, api, ago, html, raw, toast } from "../util.js";
 import { icon } from "../icons.js";
-
-const ROLES = [
-  ["pro", "Planning and projects", "The best model: plans each course, checkpoints and projects."],
-  ["flash", "Writing and feedback", "Writes most sessions, gives feedback, answers tutor questions, finds reading."],
-  ["lite", "Quick checks", "Double-checks each session and marks short answers."],
-  ["image", "Illustrations", "Draws AI illustrations for courses that have them switched on (no free tier)."],
-];
 
 export default async function settings(view) {
   const s = await api("/api/settings");
-  const known = s.known_models.map((m) => m.id);
-  const select = (role) => {
-    const cur = s.models[role];
-    const custom = !known.includes(cur);
-    return html`<div class="row"><select data-role="${role}" style="max-width:24rem">
-      ${s.known_models.map((m) => raw(html`<option value="${m.id}" ${raw(m.id === cur ? "selected" : "")}>${m.label}${m.id === s.defaults[role] ? " (default)" : ""}</option>`))}
-      <option value="__custom" ${raw(custom ? "selected" : "")}>Another model id…</option></select>
-      <input type="text" data-custom="${role}" value="${custom ? cur : ""}" placeholder="model id" style="max-width:16rem" ${raw(custom ? "" : "hidden")}></div>`;
-  };
   let theme = "system";
   try { theme = localStorage.getItem("knwlge-theme") || "system"; } catch { /* private mode */ }
+  const byId = Object.fromEntries(s.providers.map((p) => [p.id, p]));
+
+  const providerCard = (p) => html`<div class="prov" data-pid="${p.id}">
+    <div class="spread"><div><b>${p.label}</b> <span class="small faint">${p.kind_label}${p.base_url ? ` · ${p.base_url}` : ""}</span></div>
+      <span class="row" style="gap:4px">${raw(["search", "images", "pdf"].filter((k) => p.can[k]).map((k) =>
+        `<span class="pill">${{ search: "web search", images: "pictures", pdf: "PDFs" }[k]}</span>`).join(""))}</span></div>
+    <div class="small muted">${p.key_hint ? `Key ends ${p.key_hint}` : p.kind === "compatible" ? "No key (fine for a local server)" : "No key yet"}
+      · ${p.models.length} model${p.models.length === 1 ? "" : "s"} listed${p.tested_at ? ` · tested ${ago(p.tested_at)}` : ""}</div>
+    ${raw(p.test_note ? html`<div class="small" style="color:${/^Works/.test(p.test_note) ? "var(--ink)" : "var(--bad)"}">${p.test_note}</div>` : "")}
+    <div class="row" style="margin-top:8px">
+      <input type="password" class="pkey" autocomplete="off" placeholder="${p.key_hint ? "Paste a new key to replace it" : "Paste the API key"}" style="max-width:20rem">
+      ${raw(p.builtin ? "" : html`<input type="text" class="purl" value="${p.base_url}" placeholder="Address" style="max-width:18rem" ${raw(p.kind === "compatible" || p.kind === "openai" ? "" : "hidden")}>`)}
+      <button class="ghost small" data-pact="save">${raw(icon("check", 14))}Save</button>
+      <button class="ghost small" data-pact="test">${raw(icon("refresh-cw", 14))}Test and list models</button>
+      ${raw(p.builtin ? (p.key_hint ? `<button class="link small" data-pact="clearkey">Remove key</button>` : "") : `<button class="link small" data-pact="remove">Remove</button>`)}
+    </div>
+    <details class="prices"><summary class="small muted">Prices (for Usage)</summary>
+      <p class="small faint">Dollars per million tokens. Knwlge knows Gemini's and Claude's prices; add others here (0 for a free local model).
+        Calls to models without a price are counted as unknown.</p>
+      <div class="price-rows">${raw(p.models.slice(0, 40).map((m) => html`<label class="price-row"><span class="small">${m.id}</span>
+        <input type="number" min="0" step="0.01" data-in="${m.id}" value="${m.price ? m.price[0] : ""}" placeholder="in">
+        <input type="number" min="0" step="0.01" data-out="${m.id}" value="${m.price ? m.price[1] : ""}" placeholder="out"></label>`).join("")
+        || `<span class="small faint">Test it first to list its models.</span>`)}</div>
+      ${raw(p.models.length ? `<button class="ghost small" data-pact="prices">Save prices</button>` : "")}
+    </details>
+  </div>`;
+
+  const routeRow = ([role, r]) => {
+    const choices = s.providers.filter((p) => !r.needs_images || p.can.images);
+    const p = byId[r.provider];
+    const listed = (p ? p.models : []).map((m) => m.id);
+    const custom = !listed.includes(r.model);
+    return html`<div class="route" data-role="${role}"><label class="field">${r.title}</label><div class="field-hint">${r.hint}</div>
+      <div class="row"><select class="rprov" aria-label="${`Provider for ${r.title}`}">${choices.map((x) => raw(html`<option value="${x.id}" ${raw(x.id === r.provider ? "selected" : "")}>${x.label}</option>`))}</select>
+        <select class="rmodel" aria-label="${`Model for ${r.title}`}">${listed.map((m) => raw(html`<option value="${m}" ${raw(m === r.model ? "selected" : "")}>${m}</option>`))}
+          <option value="__custom" ${raw(custom ? "selected" : "")}>Another model id…</option></select>
+        <input type="text" class="rcustom" value="${custom ? r.model : ""}" placeholder="model id" style="max-width:16rem" ${raw(custom ? "" : "hidden")}></div></div>`;
+  };
+
   view.innerHTML = html`<h1>Settings</h1>
     <div class="panel">
       <h2>Appearance</h2>
@@ -29,26 +52,33 @@ export default async function settings(view) {
         raw(html`<button class="small ${k === theme ? "" : "ghost"}" data-theme-pick="${k}" aria-pressed="${k === theme}">${l}</button>`))}</div>
     </div>
     <div class="panel stack">
-      <div><h2>Gemini API key</h2>
-        <p class="muted small">Get one at Google AI Studio. It's stored in Knwlge's database on this box and never sent to your browser.
-          Grounded search (for reading lists) needs a paid-tier key.</p>
-        <div class="row"><input type="password" id="key" autocomplete="off" placeholder="${s.key_hint ? `Saved (ends ${s.key_hint})` : "Paste your key"}" style="max-width:26rem">
-          <button id="savekey">Save key</button>
-          ${raw(s.key_hint ? `<button class="ghost" id="test">${icon("check", 15)}Test it</button><button class="link small" id="clearkey">Remove key</button>` : "")}</div>
-        <p class="small" id="testres"></p></div>
+      <div><h2>AI providers</h2>
+        <p class="muted small">Keys are stored in Knwlge's database on this box and never sent to browsers. Gemini is built in;
+          add OpenAI, Anthropic or any OpenAI-compatible endpoint (LiteLLM, Ollama, vLLM, LM Studio) to use them for some roles.</p></div>
+      <div class="stack" id="provs">${raw(s.providers.map(providerCard).join(""))}</div>
+      <details id="addprov"><summary><b>${raw(icon("plus", 14))} Add a provider</b></summary>
+        <div class="stack" style="margin-top:10px">
+          <div class="row"><select id="nkind" aria-label="Kind of provider">${Object.entries(s.kinds).map(([k, v]) => raw(html`<option value="${k}">${v.label}</option>`))}</select>
+            <input type="text" id="nlabel" placeholder="Name (optional)" style="max-width:14rem"></div>
+          <div class="row"><input type="text" id="nurl" placeholder="Address" style="max-width:24rem">
+            <input type="password" id="nkey" autocomplete="off" placeholder="API key" style="max-width:20rem"></div>
+          <p class="small faint" id="nhint" style="margin:0"></p>
+          <div><button id="addgo">${raw(icon("plug", 15))}Add and test</button></div>
+        </div></details>
+    </div>
+    <div class="panel stack">
+      <div><h2>Who does what</h2><p class="muted small">Pick a provider and model for each kind of work. If one provider is over-cautious
+        with a subject (medicine, chemistry, the history of warfare...), switch that role to another. Changes apply to new work.</p></div>
+      ${raw(Object.entries(s.routes).map(routeRow).join(""))}
+      <div><button class="ghost" id="saveroutes">${raw(icon("check", 15))}Save choices</button></div>
     </div>
     <div class="panel stack">
       <div><h2>Monthly budget</h2>
-        <p class="muted small">Optional. When this month's estimated Gemini spend reaches it, new work pauses until next month (or until you raise it).
+        <p class="muted small">Optional. When this month's estimated AI spend reaches it, new work pauses until next month (or until you raise it).
           Work already running finishes, so it can go slightly over.</p>
         <div class="row"><span>$</span><input type="number" id="budget" min="0" step="1" value="${s.budget_monthly_usd ?? ""}" placeholder="No limit" style="max-width:9rem">
           <button class="ghost" id="savebudget">Save budget</button>
           ${raw(s.budget_monthly_usd ? `<button class="link small" id="clearbudget">No limit</button>` : "")}</div></div>
-    </div>
-    <div class="panel stack">
-      <div><h2>Models</h2><p class="muted small">Change these if Google renames or retires a model. Prices for unlisted models aren't known, so their cost won't show in Usage.</p></div>
-      ${ROLES.map(([role, title, hint]) => raw(html`<div><label class="field">${title}</label><div class="field-hint">${hint}</div>${raw(select(role))}</div>`))}
-      <div><button class="ghost" id="savemodels">Save models</button></div>
     </div>
     ${raw(s.mode === "personal" ? html`<div class="panel stack" id="protect">
       <div><h2>Password</h2>
@@ -65,10 +95,96 @@ export default async function settings(view) {
     </div>` : "")}
     <div class="panel">
       <h2>Paused work</h2>
-      <p class="muted small">Work pauses when Gemini rate-limits, refuses the key, or the budget is reached. Saving settings resumes it; so does this.</p>
+      <p class="muted small">Work pauses when a provider rate-limits, refuses its key, or the budget is reached. Saving settings resumes it; so does this.</p>
       <button class="ghost" id="resume">${raw(icon("play", 15))}Resume paused work now</button>
     </div>`;
 
+  // ----- adding a provider -----
+  const hint = () => {
+    const k = $("#nkind", view).value;
+    const meta = s.kinds[k];
+    $("#nurl", view).hidden = k === "anthropic";
+    $("#nurl", view).value = k === "compatible" ? "" : meta.base_url;
+    $("#nurl", view).placeholder = k === "compatible" ? "e.g. http://192.168.1.10:11434/v1 or http://litellm:4000/v1" : "Address";
+    $("#nkey", view).placeholder = meta.needs_key ? "API key" : "API key (if the server wants one)";
+    $("#nhint", view).textContent = {
+      openai: "Uses Chat Completions. Pictures with an image model such as gpt-image-1. No web search here, so reading lists are written without it (still checked link by link).",
+      anthropic: "Claude, through Anthropic's own SDK. Has web search for live research and reading lists; can't draw pictures.",
+      compatible: "Anything that speaks the OpenAI API. Local models work, but small ones can struggle to write a whole lesson as JSON; try one role first.",
+    }[k] || "";
+  };
+  $("#nkind", view).addEventListener("change", hint);
+  hint();
+  $("#addgo", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    const r = await api("/api/providers", { method: "POST", json: { kind: $("#nkind", view).value, label: $("#nlabel", view).value,
+      base_url: $("#nurl", view).hidden ? "" : $("#nurl", view).value, api_key: $("#nkey", view).value } });
+    toast(r.test.ok ? `Added. ${r.test.message}` : `Added, but the test failed: ${r.test.message}`, !r.test.ok);
+    settings(view);
+  }));
+
+  // ----- each provider -----
+  $$(".prov", view).forEach((box) => {
+    const pid = box.dataset.pid;
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-pact]");
+      if (!b) return;
+      const what = b.dataset.pact;
+      act(b, async () => {
+        if (what === "save") {
+          const key = $(".pkey", box).value.trim();
+          const url = $(".purl", box);
+          await api(`/api/providers/${pid}`, { method: "PUT", json: { api_key: key || null, base_url: url && !url.hidden ? url.value : null } });
+          toast("Saved.");
+          if (key) {
+            const t = await api(`/api/providers/${pid}/test`, { method: "POST", json: {} });
+            toast(t.ok ? t.message : `The test failed: ${t.message}`, !t.ok);
+          }
+        } else if (what === "test") {
+          const t = await api(`/api/providers/${pid}/test`, { method: "POST", json: {} });
+          toast(t.ok ? t.message : `The test failed: ${t.message}`, !t.ok);
+        } else if (what === "clearkey") {
+          if (!confirm("Remove the Gemini key? Roles that use Gemini pause until you add one.")) return;
+          await api("/api/settings", { method: "PUT", json: { clear_key: true } });
+        } else if (what === "remove") {
+          if (!confirm("Remove this provider? Roles that used it go back to Gemini.")) return;
+          await api(`/api/providers/${pid}`, { method: "DELETE" });
+        } else if (what === "prices") {
+          const prices = {};
+          $$("[data-in]", box).forEach((i) => {
+            const o = box.querySelector(`[data-out="${CSS.escape(i.dataset.in)}"]`);
+            prices[i.dataset.in] = i.value === "" && o.value === "" ? null : [Number(i.value || 0), Number(o.value || 0)];
+          });
+          await api(`/api/providers/${pid}`, { method: "PUT", json: { prices } });
+          toast("Prices saved.");
+        }
+        settings(view);
+      });
+    });
+  });
+
+  // ----- roles -----
+  $$(".route", view).forEach((row) => {
+    const prov = $(".rprov", row), model = $(".rmodel", row), custom = $(".rcustom", row);
+    prov.addEventListener("change", () => {
+      const ids = (byId[prov.value]?.models || []).map((m) => m.id);
+      model.innerHTML = ids.map((m) => html`<option value="${m}">${m}</option>`).join("") + `<option value="__custom">Another model id…</option>`;
+      custom.hidden = ids.length > 0;
+      if (!ids.length) model.value = "__custom";
+    });
+    model.addEventListener("change", () => { custom.hidden = model.value !== "__custom"; });
+  });
+  $("#saveroutes", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    const body = {};
+    $$(".route", view).forEach((row) => {
+      const m = $(".rmodel", row).value;
+      body[row.dataset.role] = { provider: $(".rprov", row).value, model: m === "__custom" ? $(".rcustom", row).value.trim() : m };
+    });
+    await api("/api/routes", { method: "PUT", json: body });
+    toast("Saved. New work uses these.");
+    settings(view);
+  }));
+
+  // ----- the rest, as before -----
   $("#psave", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     const r = await api("/api/personal/password", { method: "POST", json: { current: $("#pcur", view)?.value || "", new: $("#pnew", view).value } });
     toast(r.protected ? "Password saved. Knwlge will ask for it from now on." : "Saved.");
@@ -92,27 +208,6 @@ export default async function settings(view) {
       x.setAttribute("aria-pressed", String(x === b));
     });
   }));
-  view.querySelectorAll("select[data-role]").forEach((sel) => sel.addEventListener("change", () => {
-    view.querySelector(`[data-custom="${sel.dataset.role}"]`).hidden = sel.value !== "__custom";
-  }));
-  $("#savekey", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
-    const key = $("#key", view).value.trim();
-    if (!key) throw new Error("Paste a key first.");
-    await api("/api/settings", { method: "PUT", json: { api_key: key } });
-    toast("Key saved.");
-    settings(view);
-  }));
-  $("#clearkey", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
-    if (!confirm("Remove the saved key? Course work pauses until you add one.")) return;
-    await api("/api/settings", { method: "PUT", json: { clear_key: true } });
-    settings(view);
-  }));
-  $("#test", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
-    const out = $("#testres", view);
-    out.textContent = "Asking Gemini…";
-    const r = await api("/api/settings/test", { method: "POST" });
-    out.innerHTML = r.ok ? html`<span style="color:var(--good)">✓ Works (${r.model}):</span> ${r.message}` : html`<span style="color:var(--bad)">${r.message}</span>`;
-  }));
   $("#savebudget", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
     const v = $("#budget", view).value;
     await api("/api/settings", { method: "PUT", json: v === "" ? { clear_budget: true } : { budget_monthly_usd: Number(v) } });
@@ -122,15 +217,6 @@ export default async function settings(view) {
   $("#clearbudget", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     await api("/api/settings", { method: "PUT", json: { clear_budget: true } });
     settings(view);
-  }));
-  $("#savemodels", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
-    const models = {};
-    for (const [role] of ROLES) {
-      const v = view.querySelector(`select[data-role="${role}"]`).value;
-      models[role] = v === "__custom" ? view.querySelector(`[data-custom="${role}"]`).value.trim() : v;
-    }
-    await api("/api/settings", { method: "PUT", json: { models } });
-    toast("Models saved.");
   }));
   $("#resume", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
     const r = await api("/api/jobs/resume", { method: "POST" });

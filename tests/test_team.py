@@ -249,7 +249,7 @@ def test_upgrade_from_v0_1_0(app_env):
     db.init()
     db.init()   # twice: the upgrade is idempotent
     with db.tx() as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 4
         owner = c.execute("SELECT * FROM users WHERE id=1").fetchone()
         assert owner["username"] == "owner" and owner["role"] == "admin" and owner["password_hash"] is None
         p = c.execute("SELECT * FROM session_progress").fetchone()

@@ -156,6 +156,13 @@ def regenerate_session(c: sqlite3.Connection, session_id: str, wish: str = "") -
 def retry(c: sqlite3.Connection, course_id: str) -> int:
     row = course_row(c, course_id)
     n = jobs.retry_failed(c, course_id)
+    # a failed session with no job to retry (one an imported package didn't have) is written afresh
+    for s in c.execute("SELECT id FROM sessions WHERE course_id=? AND state='failed' AND id NOT IN (SELECT ref FROM jobs WHERE "
+                       "course_id=? AND kind IN ('session','check') AND status IN ('queued','running','waiting') AND ref IS NOT NULL)",
+                       (course_id, course_id)).fetchall():
+        if row["plan_json"]:
+            queue_session(c, course_id, s["id"])
+            n += 1
     c.execute("UPDATE sessions SET state='writing', error=NULL WHERE course_id=? AND state='failed'", (course_id,))
     _set(c, course_id, error=None)
     if n == 0 and row["status"] == "questions":
@@ -331,6 +338,10 @@ def _on_plan(c: sqlite3.Connection, job: sqlite3.Row, res: gemini.Result) -> Non
         sessions.append({"slot": slot["slot"], "kind": slot["kind"], "minutes": slot["minutes"], "title": s["title"][:200],
                          "topics": s.get("topics", [])[:8], "objectives": s.get("objectives", [])[:5]})
     plan["sessions"] = sessions
+    from . import achievements, library   # here: both import Problem from this module
+    if not library.tags_of(row):   # the author's own tags win over suggestions
+        library.set_tags(c, job["course_id"], plan.get("tags") or [])
+    achievements.store_planned(c, job["course_id"], plan.get("achievements") or [], [s["slot"] for s in sessions])
     _set(c, job["course_id"], plan_json=db.dumps(plan), title=plan.get("title") or row["subject"],
          summary=plan.get("summary", ""), status="review", change_request=None)
 

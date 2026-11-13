@@ -16,6 +16,16 @@ PRICES: dict[str, list[tuple[dt.date, float, float]]] = {
     "gemini-nano-banana-2.1": [(dt.date(2026, 1, 1), 1.50, 30.00)],
 }
 
+# Claude prices (Anthropic's first-party API, as of 2026-11-03). Cache reads and writes are counted as input here.
+CLAUDE_PRICES: dict[str, tuple[float, float]] = {
+    "claude-fable-5-2": (8.00, 40.00), "claude-fable-5-1": (10.00, 50.00), "claude-fable-5": (10.00, 50.00),
+    "claude-opus-5-5": (4.00, 20.00), "claude-opus-5": (5.00, 25.00), "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00), "claude-opus-4-6": (5.00, 25.00), "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-sonnet-5": (2.00, 10.00), "claude-sonnet-4-6": (3.00, 15.00), "claude-haiku-5-5": (0.10, 0.50),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+CLAUDE_SEARCH_USD = 10.0 / 1000   # Anthropic's web search tool: $10 per 1,000 searches
+
 # Grounding with Google Search on Gemini 3 and newer: billed per search query the model runs.
 SEARCH_FREE_PER_MONTH = 5000
 SEARCH_USD_PER_QUERY = 14.0 / 1000
@@ -45,8 +55,10 @@ def rate(model: str, on: dt.date) -> tuple[float, float] | None:
     return current or (table[0][1], table[0][2])
 
 
-def token_cost(model: str, input_tokens: int, output_tokens: int, on: dt.date) -> float | None:
-    r = rate(model, on)
+def token_cost(model: str, input_tokens: int, output_tokens: int, on: dt.date,
+               override: tuple[float, float] | None = None) -> float | None:
+    """Cost in USD. `override` is an admin-entered price for the provider's model; otherwise the built-in tables."""
+    r = override or rate(model, on) or CLAUDE_PRICES.get(model)
     if r is None:
         return None
     return input_tokens / 1e6 * r[0] + output_tokens / 1e6 * r[1]

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
@@ -367,6 +367,63 @@ def _migrate_to_v3(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE courses SET published_at=coalesce(published_at, created_at) WHERE visibility='published'")
 
 
+# v4: course tags, pins and shelves on the home page, AI providers, the activity feed and achievements
+SCHEMA_V4 = """
+CREATE TABLE IF NOT EXISTS providers (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,               -- gemini | openai | anthropic | compatible
+    label TEXT NOT NULL,
+    base_url TEXT NOT NULL DEFAULT '',
+    api_key TEXT NOT NULL DEFAULT '', -- server-side only; never sent to browsers or logged
+    models_json TEXT NOT NULL DEFAULT '[]',
+    tested_at TEXT,
+    test_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,               -- session_done | course_done | achievement
+    course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+    details_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS activity_at ON activity(at);
+
+-- course-themed achievements written with the plan (the built-in ones live in code)
+CREATE TABLE IF NOT EXISTS achievements (
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    rule_json TEXT NOT NULL DEFAULT '{}',
+    seq INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (course_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    earned_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id, key)
+);
+"""
+
+
+def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_V4)
+    for table, col, ddl in (
+        ("courses", "tags_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ("course_prefs", "pinned", "INTEGER NOT NULL DEFAULT 0"),
+        ("course_prefs", "shelf", "TEXT"),          # NULL: automatic (started = mine) | mine | aside
+        ("llm_calls", "provider", "TEXT"),
+    ):
+        if col not in _cols(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+
+
 POST_SCHEMA = """
 CREATE INDEX IF NOT EXISTS attempts_user ON attempts(user_id, item_id, id);
 CREATE INDEX IF NOT EXISTS chat_user ON chat_messages(course_id, scope, user_id, id);
@@ -390,6 +447,7 @@ def init() -> None:
         except BaseException:
             conn.execute("ROLLBACK")
             raise
+        _migrate_to_v4(conn)
         conn.executescript(POST_SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:

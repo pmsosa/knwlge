@@ -39,6 +39,9 @@ ICONS = sorted({
     "mic", "moon", "newspaper", "notebook-pen", "paperclip", "pencil", "play", "plus", "podcast", "refresh-cw",
     "scroll-text", "search", "settings", "sliders-horizontal", "sparkles", "sun", "sun-moon", "trash-2", "undo-2",
     "user-check", "user-x", "users", "video", "x",
+    # v0.3: home shelves, providers, export, dashboard, achievements
+    "pin", "pin-off", "tag", "printer", "upload", "award", "layout-dashboard", "activity", "plug", "archive",
+    "footprints", "flag", "trophy", "dumbbell", "pen-line", "flame", "eye-off", "package",
 })
 
 

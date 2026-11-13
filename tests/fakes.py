@@ -78,7 +78,12 @@ def respond(body: dict) -> dict:
         n = int(re.search(r"exactly these (\d+) session slots", prompt).group(1))
         return {"title": "Test Course", "summary": "A course for tests.", "prerequisites": [],
                 "readiness": {"teaching": "High", "feedback": "Medium-high", "weak_spots": [], "safety_note": ""},
-                "sessions": [{"slot": i, "title": f"Session {i}", "topics": ["t"], "objectives": ["o"]} for i in range(1, n + 1)]}
+                "sessions": [{"slot": i, "title": f"Session {i}", "topics": ["t"], "objectives": ["o"]} for i in range(1, n + 1)],
+                "tags": ["Astronomy", "science", "science"],
+                "achievements": [{"title": "First star chart", "description": "Finished the first session.", "rule": "finish_session",
+                                  "slot": 1},
+                                 {"title": "Out of range", "description": "Points at a slot that isn't there.", "rule": "finish_session",
+                                  "slot": 99}]}
     if "chunks" in props:
         return lesson()
     if "options" in props:
