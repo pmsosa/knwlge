@@ -824,8 +824,8 @@ def get_course(course_id: str, user: Me) -> dict:
             "own": auth.owns(user, r), "can_publish": changes.can_publish(c, user, r), "review_on": changes.review_on(c),
             "can_publish_course": auth.can_publish_course(user, r), "can_delete": auth.can_delete(user, r),
             "suggested": bool(r["suggested_at"]),
-            "earlier": [{"id": e["id"], "title": e["title"], "kind_label": KIND_LABEL[e["kind"]], "done": bool(e["done_at"])}
-                        for e in c.execute("SELECT s.*, p.done_at FROM sessions s JOIN session_progress p ON p.session_id=s.id "
+            "earlier": [{"id": e["id"], "title": e["title"], "kind_label": KIND_LABEL[e["kind"]], "done": bool(e["my_done"])}
+                        for e in c.execute("SELECT s.*, p.done_at AS my_done FROM sessions s JOIN session_progress p ON p.session_id=s.id "
                                            "AND p.user_id=? WHERE s.course_id=? AND s.archived=1 ORDER BY s.seq",
                                            (user["id"], course_id))],
             "open_changes": c.execute("SELECT count(*) AS n FROM changes WHERE course_id=? AND status IN ('working','pending')",

@@ -169,10 +169,12 @@ def _write(c: sqlite3.Connection, target: str, tid: str, data: Any) -> None:
             raise Problem("That question belongs to an earlier version of its session.")
         key_changed = (old["prompt"] != data["prompt"] or db.loads(old["options_json"], []) != data["options"]
                        or old["answer"] != data["answer"])
+        newest = c.execute("SELECT coalesce(max(id), 0) AS n FROM attempts").fetchone()["n"]
         c.execute("UPDATE items SET title=?, prompt=?, options_json=?, answer=?, explanation=?, rubric_json=?, "
-                  "changed_at=CASE WHEN ? THEN ? ELSE changed_at END WHERE id=?",
+                  "changed_at=CASE WHEN ? THEN ? ELSE changed_at END, changed_after=CASE WHEN ? THEN ? ELSE changed_after END "
+                  "WHERE id=?",
                   (data["title"], data["prompt"], db.dumps(data["options"]), data["answer"], data["explanation"],
-                   db.dumps(data["rubric"]), 1 if key_changed else 0, db.now(), tid))
+                   db.dumps(data["rubric"]), 1 if key_changed else 0, db.now(), 1 if key_changed else 0, newest, tid))
     elif target == "session":
         _restore_session(c, tid, data)
     elif target == "plan":

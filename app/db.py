@@ -493,7 +493,8 @@ def _migrate_to_v5(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_V5)
     for table, col, ddl in (
         ("items", "archived", "INTEGER NOT NULL DEFAULT 0"),     # replaced by a rewrite of its session (answers kept)
-        ("items", "changed_at", "TEXT"),                         # question or answer key changed: earlier answers get a label
+        ("items", "changed_at", "TEXT"),                         # when its question or answer key last changed
+        ("items", "changed_after", "INTEGER"),                   # the newest attempt id then: answers up to it get a label
         ("media", "archived", "INTEGER NOT NULL DEFAULT 0"),
         ("sessions", "archived", "INTEGER NOT NULL DEFAULT 0"),  # removed from the plan after people started it
         ("sessions", "gen", "INTEGER NOT NULL DEFAULT 0"),       # which rewrite of the session is live

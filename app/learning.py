@@ -62,7 +62,8 @@ def public_item(c: sqlite3.Connection, row: sqlite3.Row, uid: int) -> dict:
            "attempts": c.execute("SELECT count(*) AS n FROM attempts WHERE item_id=? AND user_id=?", (row["id"], uid)).fetchone()["n"],
            "last": attempt_view(last) if last else None,
            # the question or its answer key changed after this person last answered: their result stays, with a label
-           "changed_since": bool(last and row["changed_at"] and last["created_at"] < row["changed_at"])}
+           "changed_since": bool(last and row["changed_after"] is not None and last["id"] <= row["changed_after"]),
+           "changed_at": row["changed_at"]}
     return out
 
 
