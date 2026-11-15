@@ -19,6 +19,14 @@ export default async function account(view) {
     <hr><h2>Your achievements</h2><div id="achs"><p class="muted small">Loading…</p></div>
     <div id="myflags"></div>
   </div>`;
+  api("/api/me/allowance").then((a) => {
+    if (a.cap == null) return;
+    const left = Math.max(0, a.cap - a.used);
+    $("#share", view)?.insertAdjacentHTML("beforebegin", html`<hr><h2>This month's AI allowance</h2>
+      <div class="bar" style="margin:6px 0"><span style="width:${Math.min(100, Math.round((a.used / a.cap) * 100))}%"></span></div>
+      <p class="small muted">$${a.used.toFixed(2)} of $${a.cap.toFixed(2)} used${left ? "" : ": the tutor, feedback on written answers and your own courses wait until the 1st"}.
+        Quick questions, reading and your progress don't use it.</p>`);
+  }).catch(() => {});
   api("/api/me/flags").then(({ flags }) => {
     const box = $("#myflags", view);
     if (!box || !flags.length) return;

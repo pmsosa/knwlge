@@ -96,8 +96,10 @@ export default async function settings(view) {
       <label class="switch-row"><input type="checkbox" id="lcourses" ${raw(s.learner_courses ? "checked" : "")}>
         <div><b>Learners can make their own courses</b><div class="small muted">Private to them (and admins) until they suggest one for everyone and an
           author or admin publishes it. They can only change their own.</div></div></label>
-      <div><label class="field" for="lcap">Monthly limit per learner</label>
-        <div class="field-hint">Optional. What each learner's own courses may spend in a month; their new work pauses when they reach it. The overall budget still applies.</div>
+      <div><label class="field" for="lcap">Monthly AI allowance per learner</label>
+        <div class="field-hint">Optional, the same for every learner. Covers everything their own actions use: the tutor, feedback on their written
+          answers, flag checks and their own courses. When a learner has used it, new AI work waits until the 1st (quick questions still work).
+          Learners see what's left on their account page. The overall budget still applies.</div>
         <div class="row"><span>$</span><input type="number" id="lcap" min="0" step="0.5" value="${s.learner_cap_usd ?? ""}" placeholder="No limit" style="max-width:9rem">
           <button class="ghost" id="savecap">Save limit</button></div></div>
     </div>` : "")}
@@ -248,7 +250,7 @@ export default async function settings(view) {
   $("#savecap", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     const v = $("#lcap", view).value;
     await api("/api/settings", { method: "PUT", json: v === "" || Number(v) === 0 ? { clear_learner_cap: true } : { learner_cap_usd: Number(v) } });
-    toast(v ? "Limit saved." : "No limit per learner.");
+    toast(v ? "Allowance saved." : "No allowance per learner.");
   }));
   $("#savebudget", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
     const v = $("#budget", view).value;

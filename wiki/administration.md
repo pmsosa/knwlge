@@ -14,7 +14,7 @@ For admins. In personal mode you're the admin; **dashboard**, **people** and **a
 | AI providers | Gemini is built in; add OpenAI, Anthropic or an OpenAI-compatible endpoint. Each has **save**, **test and list models**, **remove**, and **Prices** (see below). Keys never leave the server and aren't shown again |
 | Who does what | A provider and model for each kind of work (see below) |
 | Monthly budget | A cap in dollars, or **no limit** (the default). When the month's spend reaches it, new work pauses until next month or until you raise it |
-| Changes and courses (team mode) | Review before changes go live; whether learners can make their own courses, and a monthly limit for each ([below](#changes-and-courses)) |
+| Changes and courses (team mode) | Review before changes go live; whether learners can make their own courses; a monthly AI allowance per learner ([below](#changes-and-courses)) |
 | Password (personal mode) | Off by default: the app just opens. Set one and Knwlge asks for it; **turn off password** opens it again |
 | Paused work | Work pauses when a provider rate-limits, refuses its key, or the budget is reached. **resume paused work now** tries again (saving settings does too) |
 
@@ -105,9 +105,12 @@ Team mode only, in **Settings**:
 - **Learners can make their own courses** (off by default). Their courses are private to them (and admins); they can
   change only their own, and press **suggest for everyone** on one. Suggested courses appear to authors and admins,
   who can publish them; after that authors can change them like any other.
-- **Monthly limit per learner** (optional). The most each learner's own courses may spend in a month. When a learner
-  reaches it, work they started on their own courses pauses until the next month (or until you raise or clear it),
-  and they can't start a new course. The overall budget applies as well.
+- **Monthly AI allowance per learner** (optional): one amount in dollars, the same for every learner (say $10). It
+  covers everything a learner's own actions use the AI for, on any course: the tutor, feedback on their written answers,
+  flag checks, and making and changing their own courses. Once a learner has used it, those wait until the 1st (or until
+  you raise or clear it): they're told so, and anything already queued pauses. Quick questions (multiple choice and
+  numbers), reading and their progress keep working. Learners see what's left on their account page. Authors and admins
+  have no allowance; the overall budget applies to everyone.
 
 ## People (team mode)
 

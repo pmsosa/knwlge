@@ -135,8 +135,13 @@ history too.
 
 If an admin lets learners make courses, **new course** appears for you too. Your courses are private: only you (and
 admins) see them, and only you change them. On a course's **Course** tab, **suggest for everyone** shows it to the
-authors, who can publish it for everyone. There may be a monthly limit on what your courses spend; when it's reached,
-their AI work waits until the next month.
+authors, who can publish it for everyone.
+
+### Your AI allowance (team mode)
+
+An admin may give learners a monthly AI allowance. Your account page shows how much of it you've used. It covers the
+tutor, feedback on your written answers, flags, and your own courses. When it's used up, those wait until the 1st;
+quick questions, reading and your progress don't use it.
 
 ## Progress is yours
 

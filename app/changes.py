@@ -17,7 +17,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from . import audit, auth, db, jobs, media, prompts
+from . import audit, auth, budget, db, jobs, media, prompts
 from .pipeline import Problem, _num
 from .tiers import TIERS
 
@@ -313,6 +313,7 @@ def ask_ai(c: sqlite3.Connection, user: dict, target: str, tid: str, wish: str, 
         raise Problem("That's too long.")
     if busy(c, target, tid):
         raise Problem("The AI is already working on that.")
+    budget.check_learner(c, user["id"])
     if course["status"] not in ("ready", "building"):
         raise Problem("Finish the plan first.")
     req, kind = _request(c, course, target, tid, wish, mode, focus or "")

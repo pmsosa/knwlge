@@ -97,9 +97,17 @@ The learner sees status and reply at `GET /api/me/flags` (never the suggestion m
 
 `settings.learner_courses` (team mode) lets learners create courses (`POST /api/courses`). Their courses are drafts,
 visible to them and admins; `POST /api/courses/{id}/suggest` sets `courses.suggested_at`, which makes the course visible
-to authors (who can then publish it). `settings.learner_cap_usd` caps what each learner's own courses spend a month:
-`budget.hold_capped_learners` (each worker pass) parks queued jobs a capped learner started on their own courses as
-`waiting` / `learner_cap`, and lets them go when they're under again; creating a course is refused meanwhile.
+to authors (who can then publish it).
+
+## The learner allowance
+
+`settings.learner_cap_usd` is one monthly amount for every learner (authors and admins have none).
+`budget.learner_spend` sums this month's `llm_calls` started by the learner (`user_id`), on any course: the tutor,
+marking their written answers, flag checks, their own courses. Once it's reached, `budget.check_learner` refuses new
+AI work with a plain message (a tutor question, a written answer, a flag, an AI edit, a new course), and
+`budget.hold_capped_learners` (each worker pass) parks anything they'd already queued as `waiting` / `learner_cap`,
+releasing it when they're under again (a new month, or the amount raised or cleared). A re-mark an editor asks for
+after a flag is started by the editor, so it doesn't count. `GET /api/me/allowance` gives a learner `{cap, used}`.
 
 ## Routes
 

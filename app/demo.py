@@ -361,7 +361,7 @@ def demo_changes(c) -> None:
     stamp = lambda hours: (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
     db.set_setting(c, "review_required", "1")
     db.set_setting(c, "learner_courses", "1")
-    db.set_setting(c, "learner_cap_usd", "2")
+    db.set_setting(c, "learner_cap_usd", "10")
     # a history: Maya tidied a part, then took an AI rewrite of it
     part = changes.chunk_id(s2, 0, 0)
     now = changes.current(c, "chunk", part)

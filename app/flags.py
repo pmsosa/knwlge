@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 
-from . import audit, auth, changes, db, jobs, learning, prompts
+from . import audit, auth, budget, changes, db, jobs, learning, prompts
 from .pipeline import Problem
 
 TARGETS = ("chunk", "item", "feedback", "reading")
@@ -61,6 +61,7 @@ def create(c: sqlite3.Connection, user: dict, target: str, tid: str, note: str) 
         raise Problem("Keep the note under 2,000 characters.")
     course_id, what, content = _what(c, target, str(tid), user["id"])
     auth.check_view(user, _course(c, course_id))
+    budget.check_learner(c, user["id"])
     since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
     if c.execute("SELECT count(*) AS n FROM flags WHERE user_id=? AND created_at >= ?", (user["id"], since)).fetchone()["n"] >= PER_DAY:
         raise Problem("That's a lot of flags for one day. Thank you! Try again tomorrow.")

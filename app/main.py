@@ -688,8 +688,7 @@ def new_course(body: NewCourse, user: Me) -> dict:
     with db.tx() as c:
         if not can_create(c, user):
             raise auth.AuthError("forbidden", "Learners can't make courses here. An admin can switch that on.", 403)
-        if not auth.at_least(user, "author") and budget.over_learner_cap(c, user["id"]):
-            raise Problem("You've reached this month's limit for making courses. It resets on the 1st.")
+        budget.check_learner(c, user["id"])
         cid = pipeline.create(c, body.subject, body.notes, body.depth, body.options)
         audit.log(c, "course.created", "course", cid, {"subject": body.subject[:200], "depth": body.depth})
         return {"id": cid}
@@ -1370,6 +1369,16 @@ def course_flags(course_id: str, user: Me, all: int = 0) -> dict:
     with db.tx() as c:
         editable(c, user, course_id)
         return {"flags": flags.for_course(c, course_id, bool(all))}
+
+
+@app.get("/api/me/allowance")
+def my_allowance(user: Me) -> dict:
+    """A learner's monthly AI allowance and what they've used (team mode); nothing for anyone else."""
+    with db.tx() as c:
+        cap = budget.learner_cap(c)
+        if auth.mode() != "team" or user["role"] != "learner" or cap is None:
+            return {"cap": None}
+        return {"cap": cap, "used": round(budget.learner_spend(c, user["id"]), 4)}
 
 
 @app.get("/api/me/flags")

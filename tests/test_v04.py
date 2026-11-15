@@ -203,20 +203,36 @@ def test_learner_courses(people):
     admin.post(f"/api/courses/{other}/visibility", json={"published": True})
     osid = learner.get(f"/api/courses/{other}").json()["sessions"][0]["id"]
     assert learner.put(f"/api/sessions/{osid}/chunks/0", json={"title": "t", "markdown": "x"}).status_code == 403
-    # a monthly limit per learner
+    # one monthly AI allowance, the same for every learner, covering everything their own actions use
+    assert learner.get("/api/me/allowance").json() == {"cap": None}
+    learner.post(f"/api/sessions/{sid}/chunks/1/revise", json={"wish": "simpler"})   # queued before the allowance is set
     admin.put("/api/settings", json={"learner_cap_usd": 0.0001})
     assert admin.get("/api/settings").json()["learner_cap_usd"] == 0.0001
-    r = learner.post("/api/courses", json={"subject": "More knots", "depth": "dive"})
-    assert r.status_code == 400 and "limit" in r.json()["detail"]
-    learner.post(f"/api/sessions/{sid}/chunks/1/revise", json={"wish": "simpler"})
+    a = learner.get("/api/me/allowance").json()
+    assert a["cap"] == 0.0001 and a["used"] > 0, "making Knots counted"
+    assert author.get("/api/me/allowance").json() == {"cap": None}, "authors and admins have no allowance"
     drain()
     from app import db
     with db.tx() as c:
         assert c.execute("SELECT wait_reason FROM jobs WHERE kind='revise' ORDER BY id DESC").fetchone()[0] == "learner_cap"
+    used = "this month's AI allowance"
+    r = learner.post("/api/courses", json={"subject": "More knots", "depth": "dive"})
+    assert r.status_code == 400 and used in r.json()["detail"]
+    # it isn't only their own courses: the tutor and written answers on anyone's course count too
+    r = learner.post("/api/chat", json={"course": other, "scope": "course", "text": "Why?"})
+    assert r.status_code == 400 and used in r.json()["detail"]
+    s_other = session(learner, osid)
+    written = next(i for i in s_other["items"] if i["qtype"] in ("short", "long"))
+    assert learner.post(f"/api/items/{written['id']}/attempts", data={"answer": "words"}).status_code == 400
+    mcq = next(i for i in s_other["items"] if i["qtype"] == "mcq")
+    assert learner.post(f"/api/items/{mcq['id']}/attempts", data={"answer": mcq["options"][0]}).status_code == 200, \
+        "quick questions don't use the AI"
+    assert author.post("/api/chat", json={"course": other, "scope": "course", "text": "Why?"}).status_code == 200
     admin.put("/api/settings", json={"clear_learner_cap": True})
     drain()
     with db.tx() as c:
         assert c.execute("SELECT status FROM jobs WHERE kind='revise' ORDER BY id DESC").fetchone()[0] == "done"
+    assert learner.post("/api/chat", json={"course": other, "scope": "course", "text": "Why?"}).status_code == 200
 
 
 # ---------- flags ----------

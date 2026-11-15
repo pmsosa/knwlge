@@ -40,8 +40,8 @@ Tick items off here as they land.
 - [x] **v0.4** **Flag and recheck:** learners flag a part, question, answer key, feedback or reading item; the AI
       takes a second look; a flags queue for authors, one click from a flag to a draft fix, a re-mark or a removal
 - [x] **v0.4** Course page shows the author, last update and version
-- [x] **v0.4** Roles: authors change any course; learners may make private courses of their own (an admin switch, a
-      monthly limit each) and suggest them for everyone
+- [x] **v0.4** Roles: authors change any course; learners may make private courses of their own (an admin switch)
+      and suggest them for everyone; one monthly AI allowance for every learner, covering all their AI use
 - [ ] Optional: "recommend to" people or the whole group (a nudge, no deadlines)
 - [ ] The second read-through for a rewritten session draft (today the app's own checks run; the AI check doesn't)
 

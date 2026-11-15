@@ -9,7 +9,7 @@ import random
 import re
 import sqlite3
 
-from . import db, gemini, jobs, media, prompts
+from . import budget, db, gemini, jobs, media, prompts
 from .pipeline import Problem, _norm, _num
 
 UPLOAD_TYPES = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
@@ -112,6 +112,7 @@ def attempt(c: sqlite3.Connection, item_id: str, answer: str, files: list[tuple[
         _touch_session(c, row["session_id"], uid)
         return public_item(c, item_row(c, item_id), uid)
 
+    budget.check_learner(c, uid)   # written answers are marked by the AI
     stored: list[str] = []
     files = [(safe_name(n), d) for n, d in files[:5]]
     for name, data in files:
@@ -225,7 +226,8 @@ def remark(c: sqlite3.Connection, attempt_id: int) -> None:
         req = prompts.mark_long(title, s_title, {**dict(row), "rubric": db.loads(row["rubric_json"], [])}, a["answer"], bool(files))
         req["files"] = files
     c.execute("UPDATE attempts SET status='queued' WHERE id=?", (attempt_id,))
-    jobs.enqueue(c, "mark", req, course_id=row["course_id"], ref=str(attempt_id), priority=jobs.PRIORITY_NOW, user_id=a["user_id"])
+    # started by the editor who agreed with the flag, so it doesn't count against the learner's allowance
+    jobs.enqueue(c, "mark", req, course_id=row["course_id"], ref=str(attempt_id), priority=jobs.PRIORITY_NOW)
 
 
 def reveal(c: sqlite3.Connection, item_id: str, uid: int = db.OWNER_ID) -> dict:
@@ -421,6 +423,7 @@ def ask(c: sqlite3.Connection, course_id: str, scope: str, text: str, uid: int =
         raise Problem("Keep it under 4,000 characters.")
     if chat_pending(c, course_id, scope, uid):
         raise Problem("Wait for the answer to your last question first.")
+    budget.check_learner(c, uid)
     context = chat_context(c, course_id, scope, uid)
     history = chat_messages(c, course_id, scope, uid)[-HISTORY:]
     c.execute("INSERT INTO chat_messages(course_id, scope, role, text, created_at, user_id) VALUES (?,?,?,?,?,?)",
