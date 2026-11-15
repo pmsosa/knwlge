@@ -10,7 +10,7 @@ Knwlge runs in one of two modes, chosen when it's installed (`KNWLGE_MODE` in `.
 |---|---|---|
 | Who | just you, with every permission | accounts made by an admin: learners, authors and admins |
 | Signing in | none; it simply opens. You can set a password in **Settings** if you want one | everyone signs in with a username and password |
-| Courses | yours | drafts until their author publishes them; everyone's progress is their own |
+| Courses | yours | drafts until their author publishes them; authors can change any course; learners can make private courses of their own if an admin allows it; everyone's progress is their own |
 | Extra pages | | **people** and **audit**, for admins |
 
 ## Signing in (team mode)

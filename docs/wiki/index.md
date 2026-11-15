@@ -16,6 +16,7 @@ What's left to build: [ROADMAP](../ROADMAP.md). Planning documents: [PLAN](../PL
 | [reading](reading.md) | Verifying further reading and live-research sources |
 | [library-and-people](library-and-people.md) | Tags and each person's shelves, achievements, the opt-in feed, the admin dashboard |
 | [packages](packages.md) | The `.knwlge` format, export, the untrusted import, printing |
+| [changes-and-flags](changes-and-flags.md) | Drafts and review, versions and rollback, rewriting sessions and plans without losing answers, flags, learners' own courses |
 | [auth](auth.md) | Modes, accounts, sign-in, sessions, roles, course visibility, the audit log |
 | [frontend](frontend.md) | Plain JS modules, the router, views, the tutor bubble, the section menu, Reading mode, the installable app, browser tests |
 | [security](security.md) | CSP, host checks, safe fetching, sandboxed experiments, prompt fencing |

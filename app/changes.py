@@ -462,7 +462,7 @@ def accept(c: sqlite3.Connection, user: dict | None, change_id: int, force: bool
         raise Problem("This has changed since the draft was made. Look again, then accept anyway or discard it.")
     uid = user["id"] if user else ch["user_id"]
     target, tid = ch["target"], ch["target_id"]
-    why = ("AI: " if ch["kind"] == "ai" else "") + (ch["wish"] or "Edited")
+    why = ch["wish"] or "Edited"
     _ensure_original(c, course["id"], target, tid)
     if target == "session":
         _apply_session(c, tid, proposed)

@@ -30,16 +30,20 @@ Tick items off here as they land.
 
 ## Phase 2: shared courses, flags and AI edits
 
-- [ ] **Review before AI edits go live:** show before and after for a section rewrite and accept or discard it
-      (today the new version goes live as soon as Gemini answers)
-- [ ] **Versions:** keep earlier versions of every edited piece with who, when and why; roll back any of them
-- [ ] Mark attempts on a question whose answer changed ("changed since you answered") instead of re-scoring silently
-- [ ] **AI edits beyond sections:** a question or exercise, a whole session, the course plan (add, remove or reorder
-      sessions), with the same checks as writing and a second read-through
-- [ ] **Flag and recheck:** learners flag a part, question, answer key, feedback or reading item; Gemini rechecks it;
-      a flags queue for authors, and one click from a confirmed flag to an AI edit
-- [ ] Course page shows the author, last update and version
+- [x] **v0.4** **Review before changes go live:** every AI change is a draft (before and after, word by word; accept or
+      discard); an admin switch makes authors' changes to others' courses wait for the owner or an admin
+- [x] **v0.4** **Versions:** every state of a part, question, session and plan, kept forever with who, when and why;
+      restore any of them
+- [x] **v0.4** "Changed since you answered" on a question whose key changed, instead of re-marking
+- [x] **v0.4** **AI edits beyond sections:** a question or exercise, a whole session (old questions and answers
+      archived, not deleted), the course plan (add, remove, move; started sessions stay with the people who started them)
+- [x] **v0.4** **Flag and recheck:** learners flag a part, question, answer key, feedback or reading item; the AI
+      takes a second look; a flags queue for authors, one click from a flag to a draft fix, a re-mark or a removal
+- [x] **v0.4** Course page shows the author, last update and version
+- [x] **v0.4** Roles: authors change any course; learners may make private courses of their own (an admin switch, a
+      monthly limit each) and suggest them for everyone
 - [ ] Optional: "recommend to" people or the whole group (a nudge, no deadlines)
+- [ ] The second read-through for a rewritten session draft (today the app's own checks run; the AI check doesn't)
 
 ## Phase 3: other AI providers (follow-ups)
 

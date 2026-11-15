@@ -70,7 +70,7 @@ function fieldsDiff(before, after, keys) {
 
 function planList(rows) {
   return html`<ol class="plan-diff">${rows.map((r) => raw(html`<li class="${r.removed ? "removed" : r.new ? "added" : ""}">
-    <span class="num">${r.removed ? "–" : r.seq}</span><div><b>${r.title}</b>
+    <span class="vnum">${r.removed ? "–" : r.seq}</span><div><b>${r.title}</b>
       ${raw([r.new && `<span class="pill good">new</span>`, r.removed && `<span class="pill bad">removed</span>`,
     r.moved && `<span class="pill">moved</span>`, r.renamed && `<span class="pill">renamed</span>`,
     r.rewrite && `<span class="pill teal">to be rewritten</span>`].filter(Boolean).join(" "))}
@@ -158,8 +158,8 @@ export async function openHistory(target, id, label, onDone = () => {}) {
       <h2 style="margin:0">History <span class="tone2">of ${label}.</span></h2>
       ${raw(v.length ? "" : `<p class="muted">No changes yet: this is still the version first written.</p>`)}
       <ul class="versions">${v.map((x, k) => raw(html`<li>
-        <details><summary><span class="num">${x.n}</span> <b>${SOURCE[x.source] || x.source}</b>
-          <span class="small muted">${x.who ? `by ${x.who} ` : ""}${ago(x.at)}${x.why && x.source !== "original" ? ` · ${x.why}` : ""}</span>
+        <details><summary><span class="vnum">${x.n}</span> <b>${SOURCE[x.source] || x.source}</b>
+          <span class="small muted">${x.source === "original" ? "" : `${x.who ? `by ${x.who} ` : ""}${ago(x.at)}${x.why ? ` · ${x.why}` : ""}`}</span>
           ${raw(x.latest ? `<span class="pill accent">live</span>` : "")}</summary>
           <div class="version-body">${raw(versionBody(target, x.data, target === "chunk" || target === "item" ? v[k + 1]?.data : null))}</div>
           ${raw(!x.latest ? html`<button class="ghost small" data-restore="${x.id}">${raw(icon("rotate-ccw", 14))}${h.can_publish ? "Restore this version" : "Suggest going back to this"}</button>` : "")}
@@ -246,7 +246,7 @@ export async function changesTab(box, c, refresh) {
 
 const VERDICT = { wrong: ["bad", "likely wrong"], right: ["good", "looks right"], unsure: ["", "not sure"] };
 const FIX_ICON = { chunk: "sparkles", item: "sparkles", feedback: "refresh-cw", reading: "trash-2" };
-const FIX = { chunk: "Fix with the AI", item: "Fix with the AI", feedback: "Mark it again", reading: "Take it off the list" };
+const FIX = { chunk: "Draft a fix", item: "Draft a fix", feedback: "Mark it again", reading: "Take it off the list" };
 
 export async function flagsTab(box, c, refresh, showClosed = false) {
   const { flags } = await api(`/api/courses/${c.id}/flags${showClosed ? "?all=1" : ""}`);
@@ -266,7 +266,7 @@ export async function flagsTab(box, c, refresh, showClosed = false) {
       ${raw(f.reply ? html`<div class="small faint">Reply: ${f.reply}</div>` : "")}
       ${raw(f.status === "open" ? html`<div class="row" style="margin-top:6px">
         <button class="small" data-fix="${f.id}">${raw(icon(FIX_ICON[f.target], 14))}${FIX[f.target]}</button>
-        <button class="ghost small" data-done="${f.id}">${raw(icon("check", 14))}I fixed it</button>
+        <button class="ghost small" data-done="${f.id}">${raw(icon("check", 14))}Fixed by hand</button>
         <button class="ghost small" data-dismiss="${f.id}">${raw(icon("x", 14))}It's fine</button></div>` : "")}
       ${raw(f.status === "fixing" && f.change_id ? html`<div class="row" style="margin-top:6px"><button class="small" data-review="${f.change_id}">${raw(icon("git-compare", 14))}review the fix</button></div>` : "")}
     </li>`);

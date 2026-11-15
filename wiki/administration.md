@@ -14,6 +14,7 @@ For admins. In personal mode you're the admin; **dashboard**, **people** and **a
 | AI providers | Gemini is built in; add OpenAI, Anthropic or an OpenAI-compatible endpoint. Each has **save**, **test and list models**, **remove**, and **Prices** (see below). Keys never leave the server and aren't shown again |
 | Who does what | A provider and model for each kind of work (see below) |
 | Monthly budget | A cap in dollars, or **no limit** (the default). When the month's spend reaches it, new work pauses until next month or until you raise it |
+| Changes and courses (team mode) | Review before changes go live; whether learners can make their own courses, and a monthly limit for each ([below](#changes-and-courses)) |
 | Password (personal mode) | Off by default: the app just opens. Set one and Knwlge asks for it; **turn off password** opens it again |
 | Paused work | Work pauses when a provider rate-limits, refuses its key, or the budget is reached. **resume paused work now** tries again (saving settings does too) |
 
@@ -92,15 +93,31 @@ chooses in their account (**Share my activity**, off by default) whether they ap
 who isn't sharing, so turning it on later never shows the past; turning it off removes their entries. Drafts never
 appear, and entries older than 90 days are cleared.
 
+## Changes and courses
+
+Team mode only, in **Settings**:
+
+- **Review changes before they go live** (off by default). Authors can change any course. With this on, an author's
+  change to a course that isn't theirs (a hand edit, an AI draft, or going back to an earlier version) waits on that
+  course's **Changes** tab until its owner or an admin accepts it. Owners and admins publish straight away. AI changes
+  are always drafts to look at first, whichever way this is set
+  ([Editing a course](editing-courses.md#drafts-and-review)).
+- **Learners can make their own courses** (off by default). Their courses are private to them (and admins); they can
+  change only their own, and press **suggest for everyone** on one. Suggested courses appear to authors and admins,
+  who can publish them; after that authors can change them like any other.
+- **Monthly limit per learner** (optional). The most each learner's own courses may spend in a month. When a learner
+  reaches it, work they started on their own courses pauses until the next month (or until you raise or clear it),
+  and they can't start a new course. The overall budget applies as well.
+
 ## People (team mode)
 
 <img src="images/people.png" alt="People: accounts with their roles and last seen, and the Add someone form" width="100%">
 
 | Role | Can |
 |---|---|
-| Learner | Take published courses, ask the tutor |
-| Author | Also make courses, edit and publish their own |
-| Admin | Also manage people, settings, spend and the audit log, and edit any course |
+| Learner | Take published courses, ask the tutor, flag problems. If **Learners can make their own courses** is on: make private courses and change only those, and suggest one for everyone |
+| Author | Also make courses and change any course, publish their own and learners' suggested ones, and work through drafts and flags |
+| Admin | Also manage people, settings, spend and the audit log, accept any change, and publish or delete any course |
 
 - **Add someone**: username, display name, role, and a first password (leave it empty and Knwlge makes one). It's
   shown once; give it to them privately. They must choose their own at first sign-in.

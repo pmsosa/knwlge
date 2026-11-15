@@ -350,6 +350,80 @@ def demo_team_progress(c) -> None:
                       (it["id"], courses["Music"], stamp(3), "a guess", "marked", 0, ids[who]))
 
 
+def demo_changes(c) -> None:
+    """v0.4 in team mode: review on, a history of edits, drafts waiting, flags from Kim, and Kim's own suggested course."""
+    from . import changes
+    ids = {r["username"]: r["id"] for r in c.execute("SELECT id, username FROM users")}
+    maya = {"id": ids["maya"], "role": "admin"}
+    music = c.execute("SELECT id FROM courses WHERE title LIKE '%Music%'").fetchone()["id"]
+    castles = c.execute("SELECT id FROM courses WHERE title LIKE '%Castles%'").fetchone()["id"]
+    s2 = f"{music}-s02"
+    stamp = lambda hours: (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
+    db.set_setting(c, "review_required", "1")
+    db.set_setting(c, "learner_courses", "1")
+    db.set_setting(c, "learner_cap_usd", "2")
+    # a history: Maya tidied a part, then took an AI rewrite of it
+    part = changes.chunk_id(s2, 0, 0)
+    now = changes.current(c, "chunk", part)
+    changes.hand_edit(c, maya, "chunk", part, {**now, "markdown": now["markdown"] + "\n\nListen for it next time you pluck a string."},
+                      "A line to try at home")
+    cid = changes._new_change(c, music, "chunk", part, "ai", ids["maya"], wish="Simpler words, and a guitar to picture",
+                              proposed={**changes.current(c, "chunk", part),
+                                        "markdown": "Pluck a guitar string and it shakes back and forth hundreds of times a second. "
+                                                    + changes.current(c, "chunk", part)["markdown"]})
+    c.execute("UPDATE changes SET status='pending' WHERE id=?", (cid,))
+    changes.accept(c, maya, cid)
+    c.execute("UPDATE versions SET at=? WHERE course_id=? AND source='hand'", (stamp(30), music))
+    c.execute("UPDATE versions SET at=? WHERE course_id=? AND source='ai'", (stamp(5), music))
+    # drafts waiting for review: Sam's AI rewrite of the next part, and his hand edit to a question
+    part2 = changes.chunk_id(s2, 0, 1)
+    base = changes.current(c, "chunk", part2)
+    first, _, rest = base["markdown"].partition(". ")
+    cid = changes._new_change(c, music, "chunk", part2, "ai", ids["sam"], wish="Explain it with a skipping rope",
+                              proposed={**base, "markdown": f"Think of a skipping rope swung between two friends: {first[0].lower()}{first[1:]}. {rest}"})
+    c.execute("UPDATE changes SET status='pending', created_at=? WHERE id=?", (stamp(2), cid))
+    q = c.execute("SELECT id FROM items WHERE session_id=? AND qtype='mcq' ORDER BY seq", (s2,)).fetchone()["id"]
+    old = changes.current(c, "item", q)
+    hid = changes._new_change(c, music, "item", q, "hand", ids["sam"], wish="A hint about string length",
+                              proposed={**old, "explanation": (old["explanation"] + " A shorter string vibrates faster.").strip()})
+    c.execute("UPDATE changes SET created_at=? WHERE id=?", (stamp(1.5), hid))
+    # a plan change for Castles, waiting too
+    plan = changes.current(c, "plan", castles)
+    live = [x for x in plan["sessions"] if not x["archived"]]
+    proposed = {"title": plan["title"], "summary": plan["summary"], "sessions": [
+        {**x, "rewrite": False} for x in live[:3]] + [{"id": "", "kind": "lesson", "title": "Siege engines up close",
+                                                     "topics": ["trebuchets", "mangonels", "mining"], "objectives": ["You'll be able to explain how a trebuchet works."],
+                                                     "minutes": 45, "rewrite": False}] + [{**x, "rewrite": False} for x in live[3:]]}
+    cid = changes._new_change(c, castles, "plan", castles, "ai", ids["sam"], wish="Add a session on siege engines after the third one",
+                              proposed=proposed)
+    c.execute("UPDATE changes SET status='pending', notes_json=?, created_at=? WHERE id=?",
+              (db.dumps(["Added one lesson after session 3; nothing else changed."]), stamp(1), cid))
+    # flags from Kim, after a second look by the AI
+    items = c.execute("SELECT id FROM items WHERE session_id=? AND qtype IN ('mcq','numeric') ORDER BY seq", (s2,)).fetchall()
+    rows = [(items[-1]["id"], "item", "I think the answer should be 440, not 220.", "open", "wrong",
+             "The question says the string is half as long, so the frequency doubles: 440 Hz is right and the key says 220.",
+             "Change the answer to 440 and say why in the explanation.", "", 3),
+            (changes.chunk_id(s2, 0, 2), "chunk", "Is 'timbre' pronounced like 'timber'?", "dismissed", "right",
+             "The part doesn't say how to pronounce it; nothing in it is wrong.", "", "It's 'TAM-ber'. I'll add that to the glossary.", 26),
+            (changes.chunk_id(f"{music}-s03", 0, 0), "chunk", "The speed of sound here looks off.", "open", "unsure",
+             "343 m/s is right for air at 20 °C; it's a little different at other temperatures, which the part doesn't mention.",
+             "Add 'at room temperature' after the figure.", "", 6)]
+    for tid, target, note, status, verdict, reason, suggestion, reply, hours in rows:
+        c.execute("INSERT INTO flags(course_id, user_id, target, target_id, note, status, verdict, reason, suggestion, reply, created_at, "
+                  "decided_by, decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (music, ids["kim"], target, tid, note, status, verdict, reason, suggestion, reply, stamp(hours),
+                   ids["maya"] if status == "dismissed" else None, stamp(hours - 2) if status == "dismissed" else None))
+    # Kim answered a question whose key changed since: her result stays, with a label
+    newest = c.execute("SELECT max(id) AS n FROM attempts").fetchone()["n"]
+    c.execute("UPDATE items SET changed_at=?, changed_after=? WHERE id=?", (stamp(4), newest, items[0]["id"]))
+    # Kim's own course, suggested for everyone
+    knots = make(c, "Knots for sailing and climbing", "Knots You'll Actually Use", "dive",
+                 "Ten knots for boats, climbing and around the house: how to tie them, when to use them, and how they fail.", 0, False)
+    c.execute("UPDATE courses SET author_id=?, visibility='draft', published_at=NULL, suggested_at=? WHERE id=?", (ids["kim"], stamp(8), knots))
+    library.set_tags(c, knots, ["outdoors", "practical"])
+    c.execute("INSERT OR REPLACE INTO course_opens(user_id, course_id, at) VALUES (?,?,?)", (ids["kim"], knots, stamp(1)))
+
+
 def main() -> None:
     db.init()
     with db.tx() as c:
@@ -390,6 +464,7 @@ def main() -> None:
         if "--team" in sys.argv[1:]:
             demo_team(c)
             demo_team_progress(c)
+            demo_changes(c)
     print("demo data written" + (" (with team accounts: " + ", ".join(f"{u} / {p}" for u, _, _, p in DEMO_PEOPLE) + ")"
                                  if "--team" in sys.argv[1:] else ""))
 

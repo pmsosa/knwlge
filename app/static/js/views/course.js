@@ -178,7 +178,7 @@ function header(c) {
     <div class="row course-acts">${raw(shelfButtons(c))}
       <a class="icon-btn" href="#/print/${c.id}" title="Print or save as PDF" aria-label="Print or save as PDF">${raw(icon("printer", 15))}</a></div>
     <div class="row small faint byline" style="gap:6px">${raw(team() && c.visibility === "draft" ? `<span class="pill teal">${c.suggested ? "suggested" : c.own && !can("author") ? "private" : "draft"}</span>` : "")}
-      ${raw(team() ? html`<span>by ${c.author}</span><span>·</span>` : "")}
+      ${raw(team() ? html`<span>by ${c.author}</span>` : "")}
       <span title="${c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}">version ${c.version}${c.updated_at ? `, updated ${ago(c.updated_at)}` : ""}${c.updated_by && team() ? ` by ${c.updated_by}` : ""}</span></div>
     <div class="stats">
       <div class="stat"><span>${c.reading_mode ? "Sessions read" : "Sessions done"}</span><b>${p.done} / ${p.sessions}</b></div>
