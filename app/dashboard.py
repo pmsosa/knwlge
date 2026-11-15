@@ -35,7 +35,8 @@ def courses(c: sqlite3.Connection) -> list[dict]:
     month = budget.month_start_utc()
     out = []
     for co in c.execute("SELECT * FROM courses ORDER BY coalesce(published_at, created_at) DESC").fetchall():
-        sessions = c.execute("SELECT id, seq, title, kind FROM sessions WHERE course_id=? ORDER BY seq", (co["id"],)).fetchall()
+        sessions = c.execute("SELECT id, seq, title, kind FROM sessions WHERE course_id=? AND archived=0 ORDER BY seq",
+                             (co["id"],)).fetchall()
         takers = {r["user_id"] for r in c.execute(
             "SELECT DISTINCT p.user_id FROM session_progress p JOIN sessions s ON s.id=p.session_id WHERE s.course_id=?",
             (co["id"],))}
@@ -44,9 +45,9 @@ def courses(c: sqlite3.Connection) -> list[dict]:
             done = c.execute("SELECT count(*) AS n FROM session_progress WHERE session_id=? AND done_at IS NOT NULL",
                              (s["id"],)).fetchone()["n"]
             tries = c.execute("SELECT count(*) AS n, sum(CASE WHEN a.score < 0.999 THEN 1 ELSE 0 END) AS missed FROM attempts a "
-                              "JOIN items i ON i.id=a.item_id WHERE i.session_id=? AND a.status='marked' AND i.qtype != 'long'",
+                              "JOIN items i ON i.id=a.item_id WHERE i.session_id=? AND i.archived=0 AND a.status='marked' AND i.qtype != 'long'",
                               (s["id"],)).fetchone()
-            reveals = c.execute("SELECT count(*) AS n FROM item_reveals r JOIN items i ON i.id=r.item_id WHERE i.session_id=?",
+            reveals = c.execute("SELECT count(*) AS n FROM item_reveals r JOIN items i ON i.id=r.item_id WHERE i.session_id=? AND i.archived=0",
                                 (s["id"],)).fetchone()["n"]
             n, missed = tries["n"] or 0, tries["missed"] or 0
             funnel.append({"seq": s["seq"], "title": s["title"], "kind": KIND_LABEL[s["kind"]], "done": done})
@@ -59,7 +60,7 @@ def courses(c: sqlite3.Connection) -> list[dict]:
                     "author": author["display_name"] if author else "", "sessions": len(sessions), "takers": len(takers),
                     "finished": sum(1 for u in takers if len(sessions) and c.execute(
                         "SELECT count(*) AS n FROM session_progress p JOIN sessions s ON s.id=p.session_id WHERE s.course_id=? "
-                        "AND p.user_id=? AND p.done_at IS NOT NULL", (co["id"], u)).fetchone()["n"] == len(sessions)),
+                        "AND s.archived=0 AND p.user_id=? AND p.done_at IS NOT NULL", (co["id"], u)).fetchone()["n"] == len(sessions)),
                     "funnel": funnel, "stuck": stuck, "spend_month": spend["month"], "spend_all": spend["all_time"]})
     return out
 

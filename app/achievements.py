@@ -73,13 +73,13 @@ def edit_themed(c: sqlite3.Connection, course_id: str, items: list[dict], slots:
 
 def _sessions(c: sqlite3.Connection, course_id: str, uid: int) -> list[sqlite3.Row]:
     return c.execute("SELECT s.id, s.seq, p.done_at, p.note FROM sessions s LEFT JOIN session_progress p ON p.session_id=s.id "
-                     "AND p.user_id=? WHERE s.course_id=? ORDER BY s.seq", (uid, course_id)).fetchall()
+                     "AND p.user_id=? WHERE s.course_id=? AND s.archived=0 ORDER BY s.seq", (uid, course_id)).fetchall()
 
 
 def _items(c: sqlite3.Connection, where: str, args: tuple, uid: int) -> tuple[int, int]:
     """(items, items this person has answered) for a filter on items."""
     rows = c.execute(f"SELECT i.id, EXISTS(SELECT 1 FROM attempts a WHERE a.item_id=i.id AND a.user_id=? "
-                     f"AND a.status != 'failed') AS tried FROM items i WHERE {where}", (uid, *args)).fetchall()
+                     f"AND a.status != 'failed') AS tried FROM items i WHERE i.archived=0 AND {where}", (uid, *args)).fetchall()
     return len(rows), sum(1 for r in rows if r["tried"])
 
 

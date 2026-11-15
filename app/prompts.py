@@ -418,3 +418,95 @@ Answer with the whole part (title, markdown, example_markdown), not just the cha
 lesson: Markdown, $LaTeX$ for maths, fenced code blocks. Keep example_markdown empty if it was empty and the request \
 doesn't need one."""
     return research({"role": "flash", "system": HOUSE, "prompt": prompt, "schema": REVISE_SCHEMA, "materials": True}, live)
+
+
+# ---------- rewriting one question or exercise ----------
+
+RUBRIC = arr(obj(criterion=S, points=I, description=S))
+REVISE_ITEM_SCHEMA = obj(title=S, prompt=S, options=arr(S), answer=S, explanation=S, rubric=RUBRIC)
+
+
+def revise_item(course_title: str, session_title: str, goal: str, item: dict, wish: str, lesson: str = "",
+                live: bool = False) -> dict:
+    kind = {"mcq": "multiple-choice question", "numeric": "number question", "short": "short-answer question",
+            "long": "written exercise"}[item["qtype"]]
+    rules = {
+        "mcq": "Keep it multiple choice: 3-5 options, exactly one right, and answer copied word for word from the options.",
+        "numeric": "Keep it a number question: answer is one plain number (no units, no commas).",
+        "short": "Keep it a short-answer question: answer is the model answer in a few words or a sentence.",
+        "long": "Keep it a written exercise: prompt in Markdown, answer is a model answer, and a rubric of 2-5 criteria "
+                "with points (whole numbers) and what earns them.",
+    }[item["qtype"]]
+    prompt = f"""Course: {course_title}
+Session: {session_title}. Goal: {goal}
+{('What the lesson teaches before it (for context):' + chr(10) + lesson[:6000]) if lesson else ''}
+
+THIS {kind.upper()}, AS IT IS NOW (JSON):
+{json.dumps({k: item.get(k) for k in ("title", "prompt", "options", "answer", "explanation", "rubric")}, ensure_ascii=False)}
+
+CHANGE IT THE WAY THE AUTHOR ASKS: {wish}
+
+{rules} Keep what the request doesn't touch. It must still be answerable from the lesson. explanation: why the answer \
+is right, in 1-3 sentences (empty for a written exercise). Answer with the whole question, not just the change; \
+options empty unless it's multiple choice; rubric empty unless it's a written exercise."""
+    return research({"role": "flash", "system": HOUSE, "prompt": prompt, "schema": REVISE_ITEM_SCHEMA}, live)
+
+
+# ---------- changing the plan of a course that's already written ----------
+
+SESSION_KINDS = ("lesson", "review", "checkpoint", "project", "wrapup")
+REPLAN_SCHEMA = obj(title=S, summary=S, note=S,
+                    sessions=arr(obj(id=S, kind=enum(*SESSION_KINDS), title=S, topics=arr(S), objectives=arr(S),
+                                     minutes=I, rewrite=B)))
+
+
+def replan(course_title: str, summary: str, depth: str, sessions: list[dict], wish: str) -> dict:
+    t = TIERS[depth]
+    listing = "\n".join(f"- id {s['id']}: {s['seq']}. [{s['kind']}] {s['title']} ({s['minutes']} min). Topics: "
+                        f"{', '.join(s['topics'])}" for s in sessions)
+    prompt = f"""This course is already written and people may be studying it. Change its plan the way the author asks.
+
+Course: {course_title}
+Summary: {summary}
+Depth: {t['label']}. A lesson is about {t['minutes']} minutes.
+Sessions now, in order:
+{listing}
+
+THE AUTHOR'S REQUEST: {wish}
+
+Return the whole new plan, in order:
+- For a session you keep, give its id exactly as above, and keep its kind. You may change its title, topics and \
+objectives, and move it. Set rewrite=true only if its lesson content must be rewritten to match (its topics really \
+changed); renaming or moving it doesn't need a rewrite.
+- For a new session, give id "" and a kind (lesson, review, checkpoint, project or wrapup), 2-5 topics, 1-3 objectives \
+("You'll be able to ...") and minutes.
+- Leave out a session to remove it.
+Change only what the request needs. title and summary: the course's, changed only if the request needs it. note: one or \
+two sentences for the author on what you changed and why."""
+    return {"role": "pro", "system": HOUSE, "prompt": prompt, "schema": REPLAN_SCHEMA}
+
+
+# ---------- a second look at something a learner flagged ----------
+
+FLAG_SCHEMA = obj(verdict=enum("right", "wrong", "unsure"), reason=S, suggestion=S)
+
+
+def flag_check(course_title: str, what: str, content: str, note: str) -> dict:
+    prompt = f"""Course: {course_title}
+A learner flagged this {what} as possibly wrong.
+
+THE {what.upper()}:
+<<<
+{content[:12000]}
+>>>
+
+THE LEARNER'S NOTE (their words; judge it, don't just agree):
+<<<
+{note[:2000] or '(no note)'}
+>>>
+
+Check it carefully yourself: re-derive numbers, check facts, check that an answer key matches its question and options, \
+and that feedback is fair to the answer. verdict: "wrong" if there's a real mistake (or something misleading), "right" \
+if it's fine as it is, "unsure" if you can't tell. reason: 1-3 plain sentences an author can act on. suggestion: if \
+it's wrong, exactly what to change (empty otherwise)."""
+    return {"role": "lite", "system": HOUSE, "prompt": prompt, "schema": FLAG_SCHEMA}

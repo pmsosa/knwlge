@@ -6,8 +6,8 @@ import re
 import sqlite3
 import zipfile
 
-from . import audit, db, jobs, media, prompts
-from .pipeline import Problem, _num
+from . import db
+from .pipeline import Problem
 from .tiers import KIND_LABEL
 
 LIMIT = 50_000
@@ -20,111 +20,9 @@ def _session(c: sqlite3.Connection, session_id: str) -> sqlite3.Row:
     return s
 
 
-def edit_chunk(c: sqlite3.Connection, session_id: str, index: int, title: str, markdown: str, example: str) -> None:
-    s = _session(c, session_id)
-    content = db.loads(s["content_json"], {}) or {}
-    chunks = content.get("chunks", [])
-    if not 0 <= index < len(chunks):
-        raise Problem("That part of the lesson doesn't exist.")
-    if len(markdown) > LIMIT or len(example) > LIMIT:
-        raise Problem("That's too long for one part.")
-    chunks[index] = {"title": title.strip()[:200] or chunks[index]["title"], "markdown": markdown, "example_markdown": example}
-    c.execute("UPDATE sessions SET content_json=? WHERE id=?", (db.dumps(content), session_id))
-
-
-REVISE_MODES = ("rewrite", "add")
-
-
-def _ref(session_id: str, index: int) -> str:
-    return f"{session_id}:{index}"
-
-
-def revisions(c: sqlite3.Connection, session_id: str) -> list[int]:
-    """Parts of a session that Gemini is rewriting right now."""
-    out = []
-    for r in c.execute("SELECT ref FROM jobs WHERE kind='revise' AND ref LIKE ? AND status IN ('queued','running','waiting')",
-                       (session_id + ":%",)):
-        out.append(int(r["ref"].rsplit(":", 1)[1]))
-    return sorted(set(out))
-
-
-def queue_revision(c: sqlite3.Connection, session_id: str, index: int, mode: str, wish: str, focus: str = "") -> None:
-    s = _session(c, session_id)
-    if s["state"] != "ready":
-        raise Problem("Wait until the session is ready.")
-    content = db.loads(s["content_json"], {}) or {}
-    chunks = content.get("chunks", [])
-    if not 0 <= index < len(chunks):
-        raise Problem("That part of the lesson doesn't exist.")
-    if mode not in REVISE_MODES:
-        raise Problem("Choose rewrite or add.")
-    wish = (wish or "").strip()
-    if not wish:
-        raise Problem("Say what you'd like changed." if mode == "rewrite" else "Say what you'd like added.")
-    if len(wish) > 2000 or len(focus or "") > 8000:
-        raise Problem("That's too long.")
-    if index in revisions(c, session_id):
-        raise Problem("That part is already being rewritten.")
-    course = c.execute("SELECT title, options_json FROM courses WHERE id=?", (s["course_id"],)).fetchone()
-    req = prompts.revise_chunk(course["title"], s["title"], content.get("goal", ""), chunks, index, mode, wish, focus or "",
-                               live=media.options_of(course["options_json"])["research"])
-    jobs.enqueue(c, "revise", req, course_id=s["course_id"], ref=_ref(session_id, index), priority=jobs.PRIORITY_NOW)
-
-
-def _on_revise_failed(c: sqlite3.Connection, job: sqlite3.Row, err: str) -> None:
-    session_id, index = job["ref"].rsplit(":", 1)
-    s = c.execute("SELECT warnings_json FROM sessions WHERE id=?", (session_id,)).fetchone()
-    if s is not None:
-        w = db.loads(s["warnings_json"], []) + [f"Rewriting part {int(index) + 1} didn't work: {err}"]
-        c.execute("UPDATE sessions SET warnings_json=? WHERE id=?", (db.dumps(w), session_id))
-
-
-@jobs.handler("revise", on_failed=_on_revise_failed)
-def _on_revise(c: sqlite3.Connection, job: sqlite3.Row, res) -> None:
-    session_id, index = job["ref"].rsplit(":", 1)
-    index = int(index)
-    s = c.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
-    if s is None:
-        return
-    content = db.loads(s["content_json"], {}) or {}
-    chunks = content.get("chunks", [])
-    if not 0 <= index < len(chunks):
-        return
-    d = res.data
-    md = str(d.get("markdown", "")).strip()
-    if not md:
-        raise ValueError("the rewritten part came back empty")
-    before = dict(chunks[index])
-    chunks[index] = {**chunks[index], "title": str(d.get("title", "")).strip()[:200] or before.get("title", ""),
-                     "markdown": md[:LIMIT], "example_markdown": str(d.get("example_markdown", "")).strip()[:LIMIT]}
-    c.execute("UPDATE sessions SET content_json=? WHERE id=?", (db.dumps(content), session_id))
-    audit.log(c, "session.chunk_revised", "session", session_id,
-              {"course": s["course_id"], "chunk": index, "before": before,
-               "after": {k: chunks[index][k] for k in ("title", "markdown", "example_markdown")}},
-              user_id=job["user_id"])
-
-
-def edit_item(c: sqlite3.Connection, item_id: str, prompt: str, options: list[str], answer: str, explanation: str) -> None:
-    row = c.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
-    if row is None:
-        raise Problem("That question doesn't exist.")
-    prompt = prompt.strip()
-    if not prompt:
-        raise Problem("The question can't be empty.")
-    options = [o.strip() for o in options if o.strip()] if row["qtype"] == "mcq" else []
-    if row["qtype"] == "mcq":
-        if len(options) < 2:
-            raise Problem("Give at least two options.")
-        if answer.strip() not in options:
-            raise Problem("The answer must be one of the options, written exactly the same.")
-    if row["qtype"] == "numeric" and _num(answer) is None:
-        raise Problem("The answer to a number question must be a number.")
-    c.execute("UPDATE items SET prompt=?, options_json=?, answer=?, explanation=? WHERE id=?",
-              (prompt[:LIMIT], db.dumps(options), answer.strip()[:LIMIT], explanation.strip()[:LIMIT], item_id))
-
-
-def delete_item(c: sqlite3.Connection, item_id: str) -> None:
-    if c.execute("DELETE FROM items WHERE id=?", (item_id,)).rowcount == 0:
+def remove_item(c: sqlite3.Connection, item_id: str) -> None:
+    """Take a question out of its session. It's archived, not deleted, so answers people gave are kept."""
+    if c.execute("UPDATE items SET archived=1 WHERE id=? AND archived=0", (item_id,)).rowcount == 0:
         raise Problem("That question doesn't exist.")
 
 
@@ -150,7 +48,7 @@ def export_zip(c: sqlite3.Connection, course_id: str, uid: int = db.OWNER_ID) ->
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         sessions = c.execute("SELECT s.*, p.done_at AS my_done, p.summary_note AS my_summary, p.note AS my_note FROM sessions s "
-                             "LEFT JOIN session_progress p ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? ORDER BY s.seq",
+                             "LEFT JOIN session_progress p ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? AND s.archived=0 ORDER BY s.seq",
                              (uid, course_id)).fetchall()
         head = [f"# {course['title']}", "", plan.get("summary", ""), ""]
         if plan.get("prerequisites"):
@@ -184,7 +82,7 @@ def _session_md(c: sqlite3.Connection, s: sqlite3.Row, uid: int) -> str:
             out += ["### Example", "", ch["example_markdown"], ""]
     if content.get("tips_markdown"):
         out += ["## Tips", "", content["tips_markdown"], ""]
-    items = c.execute("SELECT * FROM items WHERE session_id=? ORDER BY seq", (s["id"],)).fetchall()
+    items = c.execute("SELECT * FROM items WHERE session_id=? AND archived=0 ORDER BY seq", (s["id"],)).fetchall()
     if items:
         out += ["## Questions and exercises", ""]
     for i in items:

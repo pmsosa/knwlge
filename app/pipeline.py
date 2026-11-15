@@ -127,7 +127,7 @@ def sessions_of(c: sqlite3.Connection, course_id: str) -> list[dict]:
     return [{"id": r["id"], "seq": r["seq"], "kind": r["kind"], "title": r["title"], "minutes": r["minutes"],
              "topics": db.loads(r["topics_json"], []), "objectives": db.loads(r["objectives_json"], []),
              "state": r["state"]}
-            for r in c.execute("SELECT * FROM sessions WHERE course_id=? ORDER BY seq", (course_id,))]
+            for r in c.execute("SELECT * FROM sessions WHERE course_id=? AND archived=0 ORDER BY seq", (course_id,))]
 
 
 def queue_session(c: sqlite3.Connection, course_id: str, session_id: str, feedback: str | None = None) -> None:
@@ -157,7 +157,7 @@ def retry(c: sqlite3.Connection, course_id: str) -> int:
     row = course_row(c, course_id)
     n = jobs.retry_failed(c, course_id)
     # a failed session with no job to retry (one an imported package didn't have) is written afresh
-    for s in c.execute("SELECT id FROM sessions WHERE course_id=? AND state='failed' AND id NOT IN (SELECT ref FROM jobs WHERE "
+    for s in c.execute("SELECT id FROM sessions WHERE course_id=? AND archived=0 AND state='failed' AND id NOT IN (SELECT ref FROM jobs WHERE "
                        "course_id=? AND kind IN ('session','check') AND status IN ('queued','running','waiting') AND ref IS NOT NULL)",
                        (course_id, course_id)).fetchall():
         if row["plan_json"]:
@@ -223,18 +223,20 @@ def _num(s: str) -> float | None:
         return None
 
 
-def store_session(c: sqlite3.Connection, session_id: str, kind: str, content: dict) -> None:
-    """Split a written session into display content (no answers) and item rows (with answers)."""
+def store_session(c: sqlite3.Connection, session_id: str, kind: str, content: dict, gen: int = 0) -> None:
+    """Split a written session into display content (no answers) and item rows (with answers). `gen` > 0 is a rewrite
+    of a live session: its earlier items and media were archived (answers kept), and the new ones get their own ids."""
     course_id = c.execute("SELECT course_id FROM sessions WHERE id=?", (session_id,)).fetchone()["course_id"]
-    c.execute("DELETE FROM items WHERE session_id=?", (session_id,))
+    c.execute("DELETE FROM items WHERE session_id=? AND archived=0", (session_id,))
     c.execute("DELETE FROM reading WHERE session_id=?", (session_id,))
+    prefix = f"{session_id}-g{gen}" if gen else session_id
     seq = 0
 
     def add_item(section: str, qtype: str, prompt: str, *, chunk=None, title="", options=(), answer="", explanation="",
                  tolerance=0.0, rubric=(), topic="") -> str:
         nonlocal seq
         seq += 1
-        iid = f"{session_id}-i{seq:02d}"
+        iid = f"{prefix}-i{seq:02d}"
         c.execute("INSERT INTO items(id, course_id, session_id, seq, section, chunk, qtype, title, prompt, options_json, "
                   "answer, explanation, tolerance, rubric_json, topic) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (iid, course_id, session_id, seq, section, chunk, qtype, title, prompt, db.dumps(list(options)),
@@ -254,7 +256,7 @@ def store_session(c: sqlite3.Connection, session_id: str, kind: str, content: di
                    "tips_markdown": content.get("tips_markdown", "")}
     else:
         opts = media.options_of(c.execute("SELECT options_json FROM courses WHERE id=?", (course_id,)).fetchone()["options_json"])
-        notes = media.store(c, course_id, session_id, content.get("chunks", []), opts)
+        notes = media.store(c, course_id, session_id, content.get("chunks", []), opts, gen)
         if notes:
             old_w = db.loads(c.execute("SELECT warnings_json FROM sessions WHERE id=?", (session_id,)).fetchone()["warnings_json"], [])
             c.execute("UPDATE sessions SET warnings_json=? WHERE id=?", (db.dumps(old_w + notes), session_id))
@@ -270,7 +272,7 @@ def store_session(c: sqlite3.Connection, session_id: str, kind: str, content: di
                      rubric=e.get("rubric", []))
         display = {"goal": content.get("goal", ""), "hook": content.get("hook", ""), "chunks": chunks,
                    "wrapup": content.get("wrapup", {"key_points": [], "teaser": ""})}
-    c.execute("UPDATE sessions SET content_json=? WHERE id=?", (db.dumps(display), session_id))
+    c.execute("UPDATE sessions SET content_json=?, gen=? WHERE id=?", (db.dumps(display), gen, session_id))
     for r in content.get("reading", [])[:2]:
         add_reading(c, course_id, r, session_id)
 
@@ -303,7 +305,8 @@ def add_sources(c: sqlite3.Connection, course_id: str, session_id: str | None, r
 
 
 def _refresh_course_status(c: sqlite3.Connection, course_id: str) -> None:
-    left = c.execute("SELECT count(*) AS n FROM sessions WHERE course_id=? AND state!='ready'", (course_id,)).fetchone()["n"]
+    left = c.execute("SELECT count(*) AS n FROM sessions WHERE course_id=? AND archived=0 AND state!='ready'",
+                     (course_id,)).fetchone()["n"]
     if left == 0:
         c.execute("UPDATE courses SET status='ready', updated_at=? WHERE id=? AND status='building'", (db.now(), course_id))
 

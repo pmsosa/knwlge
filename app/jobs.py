@@ -147,6 +147,7 @@ def run_one() -> bool:
             return False
         # under the cap again (it was raised, or a new month began): budget waits are over
         c.execute("UPDATE jobs SET status='queued', wait_reason=NULL WHERE status='waiting' AND wait_reason='budget'")
+        budget.hold_capped_learners(c)
         job = _claim(c)
         if job is None:
             return False

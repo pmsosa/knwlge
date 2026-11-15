@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
@@ -428,6 +428,83 @@ def _migrate_to_v4(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
 
 
+# v5: drafts and review for changes, versions of everything editable, flags, learners' own courses
+SCHEMA_V5 = """
+CREATE TABLE IF NOT EXISTS versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    target TEXT NOT NULL,             -- chunk | item | session | plan
+    target_id TEXT NOT NULL,          -- chunk: '<session>@<gen>:<index>'; item and session: their id; plan: the course id
+    n INTEGER NOT NULL,               -- 1, 2, 3... per target
+    data_json TEXT NOT NULL,
+    source TEXT NOT NULL,             -- original | hand | ai | rollback
+    why TEXT NOT NULL DEFAULT '',
+    user_id INTEGER,
+    change_id INTEGER,
+    at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS versions_target ON versions(target, target_id, n);
+CREATE INDEX IF NOT EXISTS versions_course ON versions(course_id, id);
+
+CREATE TABLE IF NOT EXISTS changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    target TEXT NOT NULL,             -- chunk | item | session | plan
+    target_id TEXT NOT NULL,
+    kind TEXT NOT NULL,               -- ai | hand
+    status TEXT NOT NULL,             -- working | pending | accepted | discarded | failed
+    wish TEXT NOT NULL DEFAULT '',
+    base_json TEXT,                   -- the target when the change was asked for
+    proposed_json TEXT,
+    notes_json TEXT NOT NULL DEFAULT '[]',
+    user_id INTEGER,
+    auto_publish INTEGER NOT NULL DEFAULT 0,
+    flag_id INTEGER,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    decided_by INTEGER,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS changes_course ON changes(course_id, status, id);
+
+CREATE TABLE IF NOT EXISTS flags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    target TEXT NOT NULL,             -- chunk | item | feedback | reading
+    target_id TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,             -- checking | open | dismissed | fixing | fixed
+    verdict TEXT,                     -- right | wrong | unsure (the AI's second look)
+    reason TEXT NOT NULL DEFAULT '',
+    suggestion TEXT NOT NULL DEFAULT '',
+    reply TEXT NOT NULL DEFAULT '',
+    change_id INTEGER,
+    created_at TEXT NOT NULL,
+    decided_by INTEGER,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS flags_course ON flags(course_id, status, id);
+CREATE INDEX IF NOT EXISTS flags_user ON flags(user_id, id);
+"""
+
+
+def _migrate_to_v5(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA_V5)
+    for table, col, ddl in (
+        ("items", "archived", "INTEGER NOT NULL DEFAULT 0"),     # replaced by a rewrite of its session (answers kept)
+        ("items", "changed_at", "TEXT"),                         # question or answer key changed: earlier answers get a label
+        ("media", "archived", "INTEGER NOT NULL DEFAULT 0"),
+        ("sessions", "archived", "INTEGER NOT NULL DEFAULT 0"),  # removed from the plan after people started it
+        ("sessions", "gen", "INTEGER NOT NULL DEFAULT 0"),       # which rewrite of the session is live
+        ("courses", "version", "INTEGER NOT NULL DEFAULT 1"),
+        ("courses", "updated_by", "INTEGER"),
+        ("courses", "suggested_at", "TEXT"),                     # a learner's own course, suggested for everyone
+    ):
+        if col not in _cols(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+
+
 POST_SCHEMA = """
 CREATE INDEX IF NOT EXISTS attempts_user ON attempts(user_id, item_id, id);
 CREATE INDEX IF NOT EXISTS chat_user ON chat_messages(course_id, scope, user_id, id);
@@ -452,6 +529,7 @@ def init() -> None:
             conn.execute("ROLLBACK")
             raise
         _migrate_to_v4(conn)
+        _migrate_to_v5(conn)
         conn.executescript(POST_SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:

@@ -177,27 +177,37 @@ def test_edit_and_regenerate(client):
     assert client.put(f"/api/items/{mcq['id']}", json={"prompt": "New?", "options": ["A", "B"], "answer": "C"}).status_code == 400
     assert client.put(f"/api/items/{mcq['id']}", json={"prompt": "New?", "options": ["A", "B"], "answer": "B"}).status_code == 200
     assert client.get(f"/api/sessions/{sid}").json()["content"]["chunks"][0]["markdown"] == "My words"
-    # one part rewritten by Gemini; the rest of the session stays as it was
+    # one part rewritten by the AI comes back as a draft; nothing changes until it's accepted
     before = client.get(f"/api/sessions/{sid}").json()["content"]["chunks"]
     r = client.post(f"/api/sessions/{sid}/chunks/1/revise", json={"mode": "rewrite", "wish": "", "focus": ""})
     assert r.status_code == 400
     r = client.post(f"/api/sessions/{sid}/chunks/1/revise", json={"mode": "rewrite", "wish": "use an analogy", "focus": "some words"})
     assert r.status_code == 200
-    assert client.get(f"/api/sessions/{sid}").json()["revising"] == [1]
+    change = r.json()["change"]
+    assert [ch["status"] for ch in client.get(f"/api/sessions/{sid}").json()["changes"]] == ["working"]
     assert client.post(f"/api/sessions/{sid}/chunks/1/revise", json={"mode": "add", "wish": "x"}).status_code == 400
     assert client.post(f"/api/sessions/{sid}/chunks/9/revise", json={"mode": "add", "wish": "x"}).status_code == 400
     drain()
     after = client.get(f"/api/sessions/{sid}").json()
-    assert after["revising"] == []
+    assert after["content"]["chunks"] == before, "a draft isn't live"
+    draft = client.get(f"/api/changes/{change}").json()
+    assert draft["status"] == "pending" and draft["after"]["markdown"] == "Clearer words, with an analogy."
+    assert draft["before"]["markdown"] == before[1]["markdown"]
+    assert client.post(f"/api/changes/{change}/accept", json={}).status_code == 200
+    after = client.get(f"/api/sessions/{sid}").json()
     assert after["content"]["chunks"][1]["markdown"] == "Clearer words, with an analogy."
-    assert after["content"]["chunks"][0] == before[0]
-    assert client.post(f"/api/sessions/{sid}/chunks/0/revise", json={"mode": "add", "wish": "a table"}).status_code == 200
+    assert after["content"]["chunks"][0] == before[0] and after["changes"] == []
+    # asked to publish straight away: live as soon as it's written
+    assert client.post(f"/api/sessions/{sid}/chunks/0/revise", json={"mode": "add", "wish": "a table", "publish_now": True}).status_code == 200
     drain()
     assert client.get(f"/api/sessions/{sid}").json()["content"]["chunks"][0]["title"] == "Rewritten part"
-    client.post(f"/api/sessions/{sid}/regenerate", json={"text": "more pictures"})
-    assert client.get(f"/api/sessions/{sid}").json()["state"] == "writing"
-    drain()
+    # a whole new version of the session is a draft too; the live one stays readable meanwhile
+    r = client.post(f"/api/sessions/{sid}/regenerate", json={"text": "more pictures"})
     assert client.get(f"/api/sessions/{sid}").json()["state"] == "ready"
+    drain()
+    assert client.post(f"/api/changes/{r.json()['change']}/accept", json={}).status_code == 200
+    s2 = client.get(f"/api/sessions/{sid}").json()
+    assert s2["state"] == "ready" and s2["gen"] == 1 and all("-g1-" in i["id"] for i in s2["items"])
 
 
 def test_materials_go_to_gemini(client):

@@ -47,7 +47,10 @@ MEDIA_FILE_TYPES = {   # kind -> {extension: mime}
 
 
 def _rel(full: str, course_id: str) -> str:
-    return full[len(course_id) + 1:] if full.startswith(course_id + "-") else full
+    """Ids relative to the course; a rewritten session's items and media drop their '-g<n>' part (only live ones are
+    exported, so the short keys stay unique)."""
+    short = full[len(course_id) + 1:] if full.startswith(course_id + "-") else full
+    return re.sub(r"^(s\d{2})-g\d+-", r"\1-", short)
 
 
 # ---------- export ----------
@@ -67,16 +70,18 @@ def export(c: sqlite3.Connection, course_id: str, uid: int, with_progress: bool 
                  "topics": db.loads(s["topics_json"], []), "objectives": db.loads(s["objectives_json"], []),
                  "minutes": s["minutes"], "ready": s["state"] == "ready", "content": db.loads(s["content_json"]),
                  "warnings": db.loads(s["warnings_json"], [])}
-                for s in c.execute("SELECT * FROM sessions WHERE course_id=? ORDER BY seq", (course_id,))]
+                for s in c.execute("SELECT * FROM sessions WHERE course_id=? AND archived=0 ORDER BY seq", (course_id,))]
     items = [{"key": rel(i["id"]), "session": rel(i["session_id"]), "seq": i["seq"], "section": i["section"], "chunk": i["chunk"],
               "qtype": i["qtype"], "title": i["title"], "prompt": i["prompt"], "options": db.loads(i["options_json"], []),
               "answer": i["answer"], "explanation": i["explanation"], "tolerance": i["tolerance"],
               "rubric": db.loads(i["rubric_json"], []), "topic": i["topic"]}
-             for i in c.execute("SELECT * FROM items WHERE course_id=? ORDER BY session_id, seq", (course_id,))]
+             for i in c.execute("SELECT * FROM items WHERE course_id=? AND archived=0 AND session_id IN (SELECT id FROM "
+                                "sessions WHERE archived=0) ORDER BY session_id, seq", (course_id,))]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         media_out = []
-        for m in c.execute("SELECT * FROM media WHERE course_id=? ORDER BY session_id, chunk, seq", (course_id,)):
+        for m in c.execute("SELECT * FROM media WHERE course_id=? AND archived=0 AND session_id IN (SELECT id FROM sessions "
+                           "WHERE archived=0) ORDER BY session_id, chunk, seq", (course_id,)):
             entry = {"key": rel(m["id"]), "session": rel(m["session_id"]), "chunk": m["chunk"], "seq": m["seq"], "kind": m["kind"],
                      "caption": m["caption"], "spec": db.loads(m["spec_json"], {}), "ready": m["status"] == "ready",
                      "credit": m["credit"], "source_url": m["source_url"], "file": None}
@@ -109,17 +114,18 @@ def _progress(c: sqlite3.Connection, course_id: str, uid: int) -> dict:
         "sessions": [{"session": rel(p["session_id"]), "started_at": p["started_at"], "done_at": p["done_at"],
                       "summary_note": p["summary_note"], "note": p["note"]}
                      for p in c.execute("SELECT p.* FROM session_progress p JOIN sessions s ON s.id=p.session_id "
-                                        "WHERE s.course_id=? AND p.user_id=?", (course_id, uid))],
+                                        "WHERE s.course_id=? AND s.archived=0 AND p.user_id=?", (course_id, uid))],
         "attempts": [{"item": rel(a["item_id"]), "created_at": a["created_at"], "answer": a["answer"], "score": a["score"],
                       "feedback": db.loads(a["feedback_json"]), "context": a["context"]}
-                     for a in c.execute("SELECT * FROM attempts WHERE course_id=? AND user_id=? AND status='marked' ORDER BY id",
-                                        (course_id, uid))],
+                     for a in c.execute("SELECT * FROM attempts WHERE course_id=? AND user_id=? AND status='marked' AND item_id "
+                                        "IN (SELECT id FROM items WHERE archived=0) ORDER BY id", (course_id, uid))],
         "reveals": [{"item": rel(r["item_id"]), "at": r["at"]}
                     for r in c.execute("SELECT r.* FROM item_reveals r JOIN items i ON i.id=r.item_id WHERE i.course_id=? "
-                                       "AND r.user_id=?", (course_id, uid))],
+                                       "AND i.archived=0 AND r.user_id=?", (course_id, uid))],
         "reviews": [{"item": rel(r["item_id"]), "due_at": r["due_at"], "interval_days": r["interval_days"], "misses": r["misses"],
                      "last_seen_at": r["last_seen_at"]}
-                    for r in c.execute("SELECT * FROM review_queue WHERE course_id=? AND user_id=?", (course_id, uid))],
+                    for r in c.execute("SELECT * FROM review_queue WHERE course_id=? AND user_id=? AND item_id IN "
+                                       "(SELECT id FROM items WHERE archived=0)", (course_id, uid))],
     }
 
 
