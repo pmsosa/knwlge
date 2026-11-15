@@ -40,7 +40,9 @@ async function refreshWho() {
   const nav = $(".top nav");
   nav.hidden = !who.user;
   $$("a", nav).forEach((a) => {
-    a.hidden = (a.dataset.min && !can(a.dataset.min)) || (a.hasAttribute("data-team") && !team());
+    // "New course": authors and admins, and learners too when an admin lets them make their own
+    const allowed = a.dataset.nav === "new" ? !!who.user?.can_create : !a.dataset.min || can(a.dataset.min);
+    a.hidden = !allowed || (a.hasAttribute("data-team") && !team());
   });
   $("#menubtn").hidden = !who.user;
   const box = $("#whoami");

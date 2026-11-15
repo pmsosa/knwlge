@@ -6,8 +6,13 @@ import { renderItem } from "../items.js";
 import { mountTutor } from "../tutor.js";
 import { sectionMenus } from "../sectionmenu.js";
 import { renderMedia } from "../media.js";
+import { dialog, openFlag, openHistory, openReview } from "../review.js";
 
 const busy = (m) => m.status === "pending" || m.status === "working";
+// drafts and work in progress on this session's parts (by index), its questions and the whole session
+const chunkIndex = (tid) => Number(tid.split(":").pop());
+const working = (s) => (s.changes || []).filter((x) => x.status === "working");
+const sig = (s) => JSON.stringify((s.changes || []).map((x) => [x.id, x.status])) + s.gen + (s.warnings || []).length;
 
 export default async function session(view, scope, id) {
   let s = await api(`/api/sessions/${id}`);
@@ -20,15 +25,14 @@ export default async function session(view, scope, id) {
     if (pane && top) pane.scrollTop = top;
   };
   let watching = false;
-  // sections Gemini is rewriting swap in by themselves
+  // drafts the AI is writing show up by themselves when they're ready to review
   const watchRevisions = () => {
-    if (watching || !(s.revising || []).length) return;
+    if (watching || !working(s).length) return;
     watching = true;
     scope.every(4000, async () => {
       const fresh = await api(`/api/sessions/${id}`);
-      const done = JSON.stringify(fresh.revising) !== JSON.stringify(s.revising) || fresh.warnings.length !== s.warnings.length;
-      if (done) { s = fresh; draw(); }
-      watching = (s.revising || []).length > 0;
+      if (sig(fresh) !== sig(s)) { s = fresh; draw(); }
+      watching = working(s).length > 0;
       return watching;
     });
   };
@@ -99,7 +103,8 @@ function drawWaiting(view, s) {
 }
 
 function drawReady(view, s, editing, setEditing, reload) {
-  const ctx = { courseId: s.course_id, editing, onChange: () => refreshProgress(view, s) };
+  const ctx = { courseId: s.course_id, editing, onChange: () => refreshProgress(view, s), changes: s.changes || [],
+    canPublish: s.can_publish, reload };
   const content = s.content || {};
   const items = s.items;
   const bySection = (sec) => items.filter((i) => i.section === sec);
@@ -115,13 +120,15 @@ function drawReady(view, s, editing, setEditing, reload) {
     ${raw(s.objectives.length ? html`<ul class="small muted">${s.objectives.map((o) => raw(html`<li>${o}</li>`))}</ul>` : "")}
     <div class="row" style="margin:.6rem 0 0" id="tools">
       ${raw(readingSwitch(rm, { compact: true }))}
-      ${raw(s.can_edit && !rm ? html`<button class="ghost small" data-act="edit">${raw(icon(editing ? "check" : "pencil", 14))}${editing ? "Done editing questions" : "Edit questions"}</button>
-      <button class="ghost small" data-act="rewrite">${raw(icon("refresh-cw", 14))}Rewrite whole session</button>` : "")}
-      ${raw(s.can_edit && rm ? html`<button class="ghost small" data-act="rewrite">${raw(icon("refresh-cw", 14))}Rewrite whole session</button>` : "")}
+      ${raw(s.can_edit && !rm && !s.archived ? html`<button class="ghost small" data-act="edit">${raw(icon(editing ? "check" : "pencil", 14))}${editing ? "Done editing questions" : "Edit questions"}</button>` : "")}
+      ${raw(s.can_edit && !s.archived ? html`<button class="ghost small" data-act="rewrite">${raw(icon("refresh-cw", 14))}New version of the session</button>
+      <button class="ghost small" data-act="history">${raw(icon("history", 14))}History</button>` : "")}
       <span class="small faint" id="prog"></span>
     </div>
-    ${raw(s.can_edit && !isProject ? `<p class="small faint tip-mouse" style="margin:6px 0 0">Tip: right-click a section (or select some text in it first) to edit it, rewrite it with Gemini or add to it.</p>
-      <p class="small faint tip-touch" style="margin:6px 0 0">Tip: tap ${icon("ellipsis", 14)} beside a section's title to edit it, rewrite it with Gemini or add to it.</p>` : "")}
+    ${raw(s.can_edit && !isProject ? `<p class="small faint tip-mouse" style="margin:6px 0 0">Tip: right-click a section (or select some text in it first) to edit it, have the AI rewrite it or add to it, or see its history.</p>
+      <p class="small faint tip-touch" style="margin:6px 0 0">Tip: tap ${icon("ellipsis", 14)} beside a section's title to edit it, have the AI rewrite it or add to it, or see its history.</p>` : "")}
+    ${raw(s.archived ? `<div class="note warn" style="margin-top:1rem">This session was taken out of the course. You can still read it, with your answers and notes.</div>` : "")}
+    ${raw(sessionDraft(s))}
     ${raw(s.warnings.length ? html`<details class="note warn small" style="margin-top:1rem"><summary style="cursor:pointer">The second read-through flagged ${s.warnings.length} thing${s.warnings.length > 1 ? "s" : ""} to double-check</summary>
       <ul>${s.warnings.map((w) => raw(html`<li>${w}</li>`))}</ul></details>` : "")}
     <div id="body"></div>`);
@@ -155,10 +162,14 @@ function drawReady(view, s, editing, setEditing, reload) {
     if (content.tips_markdown) body.append(el(html`<details class="example"><summary>Tips and pitfalls</summary><div class="prose">${raw(md(content.tips_markdown))}</div></details>`));
   } else {
     (content.chunks || []).forEach((ch, i) => {
-      const busyHere = (s.revising || []).includes(i);
+      const mine = (s.changes || []).filter((x) => x.target === "chunk" && chunkIndex(x.target_id) === i);
+      const busyHere = mine.some((x) => x.status === "working");
+      const draft = mine.find((x) => x.status === "pending" || x.status === "failed");
       const block = el(html`<section class="chunk ${busyHere ? "revising" : ""}" data-chunk="${i}"><h2 class="section-title">${ch.title}
-          ${raw(s.can_edit && !busyHere ? html`<button class="chunk-menu" type="button" data-chunk-menu aria-label="Section options for ${ch.title}" title="Edit, rewrite or add">${raw(icon("ellipsis", 18))}</button>` : "")}</h2>
-        ${raw(busyHere ? `<div class="revising-note small"><span class="spinner"></span> Gemini is rewriting this section. It'll swap in by itself.</div>` : "")}
+          ${raw(!busyHere ? html`<button class="chunk-menu" type="button" data-chunk-menu aria-label="Options for ${ch.title}" title="${s.can_edit ? "Edit, rewrite, history or flag" : "Ask or flag"}">${raw(icon("ellipsis", 18))}</button>` : "")}</h2>
+        ${raw(busyHere ? `<div class="revising-note small"><span class="spinner"></span> The AI is drafting a new version of this section. It'll be here to review in a minute.</div>` : "")}
+        ${raw(draft ? html`<div class="draft-bar small"><span>${raw(icon("git-compare", 14))} ${draft.status === "failed" ? "A rewrite of this section didn't work." : draft.kind === "ai" ? "A new version from the AI is ready to review." : `${draft.by || "Someone"} suggested an edit.`}</span>
+          <button class="small" data-review="${draft.id}">review</button></div>` : "")}
         <div class="prose">${raw(md(ch.markdown))}</div>
         <div class="chunk-media"></div>
         ${raw(ch.example_markdown ? html`<details class="example" open><summary>Worked example</summary><div class="prose">${raw(md(ch.example_markdown))}</div></details>` : "")}
@@ -189,7 +200,8 @@ function drawReady(view, s, editing, setEditing, reload) {
     body.append(el(html`<ul class="reading">${further.map((r) => raw(html`<li><span class="kind">${raw(icon(KIND_ICON[r.kind] || "link", 13))}${KIND_LABEL[r.kind] || "Link"}</span><div>
       <div class="t">${raw(r.url ? html`<a href="${r.url}" target="_blank" rel="noopener noreferrer">${r.title}</a>` : html`${r.title}`)}</div>
       <div class="small muted">${[r.creator, r.kind, r.minutes ? hours(r.minutes) : "", r.free ? "free" : "paid"].filter(Boolean).join(" · ")}</div>
-      <div class="small">${r.why}</div></div></li>`))}</ul>`));
+      <div class="small">${r.why}</div></div>
+      <button class="icon-btn flag-btn" data-flag-reading="${r.id}" title="Something wrong with this suggestion?" aria-label="Flag this suggestion">${raw(icon("flag", 13))}</button></li>`))}</ul>`));
   }
 
   if (sources.length) {
@@ -213,14 +225,43 @@ function drawReady(view, s, editing, setEditing, reload) {
   if (!isProject) sectionMenus(body, s, reload);
   mountTutor(s.course_id, s.id, "this session");
   $('[data-act="edit"]', view)?.addEventListener("click", () => setEditing(!editing));
-  $('[data-act="rewrite"]', view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
-    const wish = prompt("Rewrite the whole session from scratch. Anything you'd like different? (Your answers here will be cleared.)", "");
-    if (wish === null) return;
-    await api(`/api/sessions/${s.id}/regenerate`, { method: "POST", json: { text: wish } });
-    toast("Rewriting. It'll be back in a minute or two.");
-    location.hash = `#/course/${s.course_id}`;
-  }));
+  $('[data-act="rewrite"]', view)?.addEventListener("click", () => redoDialog(s, reload));
+  $('[data-act="history"]', view)?.addEventListener("click", () => openHistory("session", s.id, `session ${s.seq}`, reload));
+  $$("[data-review]", view).forEach((b) => b.addEventListener("click", () => openReview(Number(b.dataset.review), reload)));
+  $$("[data-flag-reading]", view).forEach((b) => b.addEventListener("click", () => openFlag("reading", b.dataset.flagReading)));
   refreshProgress(view, s);
+}
+
+function sessionDraft(s) {
+  const d = (s.changes || []).find((x) => x.target === "session");
+  if (!d) return "";
+  if (d.status === "working") return `<div class="draft-bar" style="margin-top:1rem"><span><span class="spinner"></span> The AI is writing a new version of this session. This one stays as it is until it's accepted.</span></div>`;
+  return html`<div class="draft-bar" style="margin-top:1rem"><span>${raw(icon("git-compare", 15))} ${d.status === "failed" ? "The new version didn't work." : "A new version of this session is ready to review."}</span>
+    <button class="small" data-review="${d.id}">review</button></div>`;
+}
+
+function redoDialog(s, reload) {
+  const d = dialog(html`<dialog class="modal" aria-label="New version of the session">
+    <form class="modal-body">
+      <h2 style="margin:0">A new version <span class="tone2">of this session.</span></h2>
+      <p class="small muted" style="margin:4px 0 0">The AI writes the whole session again as a draft. This version stays live until you accept the new one;
+        answers people gave are kept in history, and you can always go back.</p>
+      <div><label class="field" for="rd-wish">Anything you'd like different?</label>
+        <textarea id="rd-wish" placeholder="e.g. more worked examples, fewer questions, a gentler start"></textarea></div>
+      ${raw(s.can_publish ? `<label class="row small" style="gap:6px"><input type="checkbox" id="rd-now"> Publish it straight away, without reviewing</label>` : "")}
+      <div class="row modal-actions"><span style="flex:1"></span><button type="button" class="ghost" data-close>cancel</button>
+        <button type="submit">${raw(icon("refresh-cw", 15))}write it</button></div>
+    </form></dialog>`);
+  $("#rd-wish", d).focus();
+  $("form", d).addEventListener("submit", (e) => {
+    e.preventDefault();
+    act($('button[type="submit"]', d), async () => {
+      await api(`/api/sessions/${s.id}/regenerate`, { method: "POST", json: { text: $("#rd-wish", d).value, publish_now: !!$("#rd-now", d)?.checked } });
+      d.close();
+      toast("Writing a new version. It'll be here to review in a minute or two.");
+      await reload();
+    });
+  });
 }
 
 function wrapup(s, content, isProject) {

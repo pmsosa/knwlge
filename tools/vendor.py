@@ -42,6 +42,8 @@ ICONS = sorted({
     # v0.3: home shelves, providers, export, dashboard, achievements
     "pin", "pin-off", "tag", "printer", "upload", "award", "layout-dashboard", "activity", "plug", "archive",
     "footprints", "flag", "trophy", "dumbbell", "pen-line", "flame", "eye-off", "package",
+    # v0.4: drafts, review, versions and flags
+    "history", "git-compare", "inbox", "rotate-ccw", "send", "user-pen",
 })
 
 

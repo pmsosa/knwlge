@@ -1,4 +1,5 @@
-import { $, $$, act, api, can, html, raw, team, toast, money, hours, KIND_LABEL } from "../util.js";
+import { $, $$, act, ago, api, can, html, raw, team, toast, money, hours, KIND_LABEL } from "../util.js";
+import { changesTab, flagsTab, openFlag } from "../review.js";
 import { readingSwitch, wireReadingSwitch } from "../readingmode.js";
 import { icon, KIND_ICON } from "../icons.js";
 import { md } from "../md.js";
@@ -28,7 +29,10 @@ export default async function course(view, scope, id, tab = "sessions") {
     const changedStatus = fresh.status !== c.status;
     const busy = fresh.jobs.length > 0 || fresh.reading_checking > 0;
     const wasBusy = c.jobs.length > 0 || c.reading_checking > 0;
+    const counts = fresh.open_changes !== c.open_changes || fresh.open_flags !== c.open_flags;
     c = fresh;
+    if (counts && ["changes", "flags"].includes(view.dataset.tab)) drawTab(view, c, view.dataset.tab);
+    if (counts) $$("[data-tab]", view).forEach((b) => { b.innerHTML = tabLabel(c, b.dataset.tab, TABS.find(([k]) => k === b.dataset.tab)[1]); });
     if (changedStatus) draw();
     else if ((busy || wasBusy) && (c.status === "building" || c.status === "ready")) refreshClassroom(view, c);
     else if (c.status === "questions" || c.status === "planning") drawWaiting(view, c);
@@ -148,7 +152,7 @@ function drawPlan(view, c) {
     drawClassroom(view, c, "sessions");
   }));
   $("#change", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
-    await api(`/api/courses/${c.id}/changes`, { method: "POST", json: { text: $("#changes", view).value } });
+    await api(`/api/courses/${c.id}/changes`, { method: "POST", json: { text: $("#changes", view).value } });   // re-plan before writing
     c.status = "planning";
     drawWaiting(view, c);
   }));
@@ -158,9 +162,10 @@ const kindLabel = (k) => ({ lesson: "Lesson", review: "Review", checkpoint: "Put
 
 // ---------- the classroom ----------
 
-const TABS = [["sessions", "Sessions"], ["reading", "Further reading"], ["achievements", "Achievements"], ["materials", "Materials", true],
-  ["manage", "Course", true]];
-const TAB_ICON = { sessions: "list", reading: "book-open", achievements: "award", materials: "paperclip", manage: "sliders-horizontal" };
+const TABS = [["sessions", "Sessions"], ["reading", "Further reading"], ["achievements", "Achievements"], ["changes", "Changes", true],
+  ["flags", "Flags", true], ["materials", "Materials", true], ["manage", "Course", true]];
+const TAB_ICON = { sessions: "list", reading: "book-open", achievements: "award", materials: "paperclip", manage: "sliders-horizontal",
+  changes: "git-compare", flags: "flag" };
 const tabsFor = (c) => TABS.filter(([, , editorsOnly]) => !editorsOnly || c.can_edit);
 
 function header(c) {
@@ -172,8 +177,9 @@ function header(c) {
     ${raw(c.tags.length ? html`<div class="tags" style="margin-bottom:8px">${c.tags.map((t) => raw(html`<span class="tag">${t}</span>`))}</div>` : "")}
     <div class="row course-acts">${raw(shelfButtons(c))}
       <a class="icon-btn" href="#/print/${c.id}" title="Print or save as PDF" aria-label="Print or save as PDF">${raw(icon("printer", 15))}</a></div>
-    ${raw(team() ? html`<div class="row small faint" style="gap:6px">${raw(c.visibility === "draft" ? `<span class="pill teal">draft</span>` : "")}
-      <span>by ${c.author}</span></div>` : "")}
+    <div class="row small faint byline" style="gap:6px">${raw(team() && c.visibility === "draft" ? `<span class="pill teal">${c.suggested ? "suggested" : c.own && !can("author") ? "private" : "draft"}</span>` : "")}
+      ${raw(team() ? html`<span>by ${c.author}</span><span>·</span>` : "")}
+      <span title="${c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}">version ${c.version}${c.updated_at ? `, updated ${ago(c.updated_at)}` : ""}${c.updated_by && team() ? ` by ${c.updated_by}` : ""}</span></div>
     <div class="stats">
       <div class="stat"><span>${c.reading_mode ? "Sessions read" : "Sessions done"}</span><b>${p.done} / ${p.sessions}</b></div>
       <div class="bar"><span style="width:${p.sessions ? Math.round((p.done / p.sessions) * 100) : 0}%"></span></div>
@@ -210,8 +216,9 @@ function wireShelf(view, c) {
 
 function tabLabel(c, k, l) {
   const n = k === "reading" ? c.reading.filter((r) => !r.session_id && r.kind !== "source").length : k === "materials" ? c.materials.length
-    : k === "achievements" ? c.achievements.filter((a) => a.earned_at).length : 0;
-  return html`${raw(icon(TAB_ICON[k], 16))}<span>${l}</span>${raw(n ? `<span class="pill">${n}</span>` : "")}`;
+    : k === "achievements" ? c.achievements.filter((a) => a.earned_at).length : k === "changes" ? c.open_changes : k === "flags" ? c.open_flags : 0;
+  const hot = (k === "changes" || k === "flags") && n;
+  return html`${raw(icon(TAB_ICON[k], 16))}<span>${l}</span>${raw(n ? `<span class="pill${hot ? " accent" : ""}">${n}</span>` : "")}`;
 }
 
 function drawClassroom(view, c, tab) {
@@ -257,6 +264,14 @@ function drawTab(view, c, tab) {
   if (tab === "materials") return materialsTab(box, c);
   if (tab === "achievements") return achievementsTab(box, c);
   if (tab === "manage") return manageTab(box, c);
+  const refresh = async () => {
+    Object.assign(c, await api(`/api/courses/${c.id}`));
+    $$("[data-tab]", view).forEach((b) => { b.innerHTML = tabLabel(c, b.dataset.tab, TABS.find(([k]) => k === b.dataset.tab)[1]); });
+    $("#head", view).innerHTML = header(c);
+    if (view.dataset.tab === tab) drawTab(view, c, tab);
+  };
+  if (tab === "changes") return changesTab(box, c, refresh);
+  if (tab === "flags") return flagsTab(box, c, refresh);
   sessionsTab(box, c);
 }
 
@@ -276,7 +291,11 @@ function sessionsTab(box, c) {
       <span>${raw(ready ? (s.id === next ? `<span class="pill accent">Up next</span>` : "")
         : s.state === "failed" ? `<span class="pill bad">Failed</span>` : html`<span class="pill"><span class="spinner" style="width:.8em;height:.8em"></span> ${STATE[s.state]}</span>`)}</span>
     </li>`);
-  })}</ul>`;
+  })}</ul>
+  ${raw(c.earlier.length ? html`<h2 style="margin-top:1.6rem">Earlier sessions</h2>
+    <p class="small muted">Taken out of the course since you started them. Your answers and notes are still here.</p>
+    <ul class="sessions">${c.earlier.map((s) => raw(html`<li><span class="num ${s.done ? "done" : ""}">${s.done ? "✓" : "·"}</span>
+      <div><a class="t" href="#/session/${s.id}">${s.title}</a><div class="sub">${s.kind_label}</div></div><span></span></li>`))}</ul>` : "")}`;
 }
 
 function readingTab(box, c) {
@@ -289,7 +308,7 @@ function readingTab(box, c) {
     <div class="small muted">${[r.creator, r.year, r.kind, r.level, r.minutes ? hours(r.minutes) : "", r.free ? "free" : "paid"].filter(Boolean).join(" · ")}</div>
     <div class="small">${r.why}</div>
     ${raw(r.session_title ? html`<div class="small faint">For session ${r.session_seq}: ${r.session_title}</div>` : "")}
-  </div></li>`);
+  </div>${raw(r.kind !== "source" ? html`<button class="icon-btn flag-btn" data-flag-reading="${r.id}" title="Something wrong with this suggestion?" aria-label="Flag this suggestion">${raw(icon("flag", 13))}</button>` : "")}</li>`);
   box.innerHTML = html`
     ${raw(c.reading_checking ? html`<p class="muted row small"><span class="spinner"></span> Checking ${c.reading_checking} suggestion${c.reading_checking > 1 ? "s" : ""}: every book, video and link is looked up before it's shown.</p>` : "")}
     ${raw(course.length ? html`<h2>For the whole course</h2><ul class="reading">${course.map(item)}</ul>`
@@ -300,6 +319,7 @@ function readingTab(box, c) {
       <ul class="materials" style="margin-top:8px">${sources.map((r) => raw(html`<li><a href="${r.url}" target="_blank" rel="noopener noreferrer">${r.title}</a>
         <span class="small faint">${r.session_seq ? `session ${r.session_seq}` : ""}</span></li>`))}</ul></details>` : "")}
     ${raw(c.reading_dropped ? html`<p class="small faint" style="margin-top:1.2rem">${c.reading_dropped} suggestion${c.reading_dropped > 1 ? "s" : ""} left out because the book, video or page couldn't be found.</p>` : "")}`;
+  $$("[data-flag-reading]", box).forEach((b) => b.addEventListener("click", () => openFlag("reading", b.dataset.flagReading)));
 }
 
 function achievementsTab(box, c) {
@@ -353,10 +373,7 @@ function manageTab(box, c) {
   box.innerHTML = html`<div class="panel stack">
     <div><label class="field" for="ti">Title</label><div class="row"><input type="text" id="ti" value="${c.title}" style="max-width:32rem">
       <button class="ghost" id="rename">${raw(icon("pencil", 15))}Rename</button></div></div>
-    ${raw(team() ? html`<div class="note ${c.visibility === "draft" ? "warn" : ""}"><div class="spread">
-      <span>${c.visibility === "draft" ? "Draft: only you and admins can see this course." : "Published: everyone can take this course."}</span>
-      <button class="${c.visibility === "draft" ? "" : "ghost"} small" id="publish">${c.visibility === "draft" ? "publish" : "back to draft"}</button></div>
-      ${raw(c.visibility === "draft" ? "" : `<div class="small faint">Taking it back to a draft hides it; people's progress is kept.</div>`)}</div>` : "")}
+    ${raw(team() ? visibilityNote(c) : "")}
     <div class="small muted">Subject: ${c.subject} · Depth: ${c.depth_label}${raw(c.spend !== undefined ? html` · AI spend on this course so far: ${money(c.spend)}` : "")}</div>
     ${raw(c.plan && c.plan.prerequisites.length ? html`<div><b>Good to know first</b><ul>${c.plan.prerequisites.map((x) => raw(html`<li>${x}</li>`))}</ul></div>` : "")}
     <div><label class="field">What lessons can include</label>
@@ -377,8 +394,8 @@ function manageTab(box, c) {
       <div class="row"><button class="ghost" id="pkg">${raw(icon("package", 15))}Download course package</button>
         <a class="button ghost" href="/api/courses/${c.id}/export">${raw(icon("download", 15))}Markdown (zip)</a>
         <a class="button ghost" href="#/print/${c.id}">${raw(icon("printer", 15))}Print or save as PDF</a></div></div>
-    <hr><div class="row"><button class="danger" id="del">${raw(icon("trash-2", 15))}Delete this course</button>
-      <span class="small muted">Removes its sessions, ${team() ? "everyone's answers" : "your answers"} and materials. Can't be undone.</span></div>
+    ${raw(c.can_delete ? html`<hr><div class="row"><button class="danger" id="del">${raw(icon("trash-2", 15))}Delete this course</button>
+      <span class="small muted">Removes its sessions, ${team() ? "everyone's answers" : "your answers"} and materials. Can't be undone.</span></div>` : "")}
   </div>`;
   api("/api/extras").then((extras) => {
     const holder = $("#extras", box);
@@ -433,16 +450,42 @@ function manageTab(box, c) {
     toast(publish ? "Published. Everyone can take it now." : "Back to a draft.");
     drawClassroom(view_of(box), c, "manage");
   }));
+  $("#suggest", box)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
+    c.suggested = (await api(`/api/courses/${c.id}/suggest`, { method: "POST", json: { on: !c.suggested } })).suggested;
+    toast(c.suggested ? "Suggested. Authors and admins can now see it and publish it for everyone." : "No longer suggested.");
+    drawClassroom(view_of(box), c, "manage");
+  }));
   $("#rename", box).addEventListener("click", (e) => act(e.currentTarget, async () => {
     await api(`/api/courses/${c.id}/title`, { method: "PUT", json: { title: $("#ti", box).value } });
     c.title = $("#ti", box).value;
     toast("Renamed.");
   }));
-  $("#del", box).addEventListener("click", (e) => act(e.currentTarget, async () => {
+  $("#del", box)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     if (!confirm(`Delete “${c.title}” and everything in it?`)) return;
     await api(`/api/courses/${c.id}`, { method: "DELETE" });
     location.hash = "#/";
   }));
+}
+
+function visibilityNote(c) {
+  if (c.visibility === "published") {
+    return html`<div class="note"><div class="spread"><span>Published: everyone can take this course.</span>
+      ${raw(c.can_publish_course ? `<button class="ghost small" id="publish">back to draft</button>` : "")}</div>
+      ${raw(c.can_publish_course ? `<div class="small faint">Taking it back to a draft hides it; people's progress is kept.</div>` : "")}</div>`;
+  }
+  if (c.can_publish_course) {
+    return html`<div class="note warn"><div class="spread"><span>${c.suggested && !c.own
+      ? "Suggested for everyone by its owner. Publish it to put it in front of everyone."
+      : "Draft: only you and admins can see this course."}</span>
+      <button class="small" id="publish">publish</button></div></div>`;
+  }
+  if (c.own) {
+    return html`<div class="note ${c.suggested ? "" : "warn"}"><div class="spread"><span>${c.suggested
+      ? "Suggested for everyone: an author or admin can publish it."
+      : "Private: only you (and admins) can see this course."}</span>
+      <button class="${c.suggested ? "ghost" : ""} small" id="suggest">${c.suggested ? "stop suggesting" : "suggest for everyone"}</button></div></div>`;
+  }
+  return `<div class="note">A draft.</div>`;
 }
 
 export { md };

@@ -1314,8 +1314,8 @@ def course_changes(course_id: str, user: Me, all: int = 0) -> dict:
 def get_change(change_id: int, user: Me) -> dict:
     with db.tx() as c:
         ch = changes.change_row(c, change_id)
-        editable(c, user, ch["course_id"])
-        return changes.view(c, ch, user)
+        r = editable(c, user, ch["course_id"])
+        return {**changes.view(c, ch, user), "can_publish": changes.can_publish(c, user, r), "course_id": r["id"]}
 
 
 class AcceptIn(BaseModel):

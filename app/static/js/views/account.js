@@ -1,5 +1,5 @@
 // Your own account: the name others see, and (where there is one) your password.
-import { $, act, api, html, raw, team, toast, who } from "../util.js";
+import { $, act, ago, api, html, raw, team, toast, who } from "../util.js";
 import { icon } from "../icons.js";
 
 export default async function account(view) {
@@ -17,7 +17,19 @@ export default async function account(view) {
     ${raw(hasPassword ? html`<hr><div class="row"><a class="button ghost" href="#/password">${raw(icon("key-round", 15))}change password</a></div>` : "")}
     <div id="share"></div>
     <hr><h2>Your achievements</h2><div id="achs"><p class="muted small">Loading…</p></div>
+    <div id="myflags"></div>
   </div>`;
+  api("/api/me/flags").then(({ flags }) => {
+    const box = $("#myflags", view);
+    if (!box || !flags.length) return;
+    const STATE = { checking: "being checked", open: "with the authors", fixing: "being fixed", fixed: "fixed", dismissed: "looked at: it's fine" };
+    box.innerHTML = html`<hr><h2>Things you flagged</h2><p class="small muted">Thanks for these. Here's what happened to each.</p>
+      <ul class="flags">${flags.map((f) => raw(html`<li class="flag"><div class="spread"><b>${raw(f.session_id ? html`<a href="#/session/${f.session_id}">${f.where}</a>` : f.where)}</b>
+        <span class="pill ${f.status === "fixed" ? "good" : ""}">${STATE[f.status] || f.status}</span></div>
+        <div class="small muted">${f.course_title} · ${ago(f.created_at)}</div>
+        ${raw(f.note ? html`<div class="small">“${f.note}”</div>` : "")}
+        ${raw(f.reply ? html`<div class="small"><b>Reply:</b> ${f.reply}</div>` : "")}</li>`))}</ul>`;
+  }).catch(() => {});
   if (team()) {
     api("/api/feed").then((f) => {
       const box = $("#share", view);

@@ -88,6 +88,19 @@ export default async function settings(view) {
           <button class="ghost" id="savebudget">Save budget</button>
           ${raw(s.budget_monthly_usd ? `<button class="link small" id="clearbudget">No limit</button>` : "")}</div></div>
     </div>
+    ${raw(s.mode === "team" ? html`<div class="panel stack" id="teamrules">
+      <div><h2>Changes and courses</h2></div>
+      <label class="switch-row"><input type="checkbox" id="review" ${raw(s.review_required ? "checked" : "")}>
+        <div><b>Review changes before they go live</b><div class="small muted">Authors can change any course. With this on, a change to a course that
+          isn't theirs waits until the course's owner or an admin accepts it. AI changes are always drafts to look at first, whatever this says.</div></div></label>
+      <label class="switch-row"><input type="checkbox" id="lcourses" ${raw(s.learner_courses ? "checked" : "")}>
+        <div><b>Learners can make their own courses</b><div class="small muted">Private to them (and admins) until they suggest one for everyone and an
+          author or admin publishes it. They can only change their own.</div></div></label>
+      <div><label class="field" for="lcap">Monthly limit per learner</label>
+        <div class="field-hint">Optional. What each learner's own courses may spend in a month; their new work pauses when they reach it. The overall budget still applies.</div>
+        <div class="row"><span>$</span><input type="number" id="lcap" min="0" step="0.5" value="${s.learner_cap_usd ?? ""}" placeholder="No limit" style="max-width:9rem">
+          <button class="ghost" id="savecap">Save limit</button></div></div>
+    </div>` : "")}
     ${raw(s.mode === "personal" ? html`<div class="panel stack" id="protect">
       <div><h2>Password</h2>
         <p class="muted small">${s.personal_password
@@ -222,6 +235,20 @@ export default async function settings(view) {
       x.classList.toggle("ghost", x !== b);
       x.setAttribute("aria-pressed", String(x === b));
     });
+  }));
+  for (const [sel, key, on, off] of [["#review", "review_required", "Review is on for changes to others' courses.", "Review is off: changes go live at once."],
+    ["#lcourses", "learner_courses", "Learners can make their own courses now.", "Learners can't make new courses."]]) {
+    $(sel, view)?.addEventListener("change", async (e) => {
+      try {
+        await api("/api/settings", { method: "PUT", json: { [key]: e.target.checked } });
+        toast(e.target.checked ? on : off);
+      } catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+    });
+  }
+  $("#savecap", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
+    const v = $("#lcap", view).value;
+    await api("/api/settings", { method: "PUT", json: v === "" || Number(v) === 0 ? { clear_learner_cap: true } : { learner_cap_usd: Number(v) } });
+    toast(v ? "Limit saved." : "No limit per learner.");
   }));
   $("#savebudget", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
     const v = $("#budget", view).value;
