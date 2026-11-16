@@ -40,6 +40,10 @@ export default async function home(view, scope) {
           <div class="shelf-head"><h2 id="mine-h">My courses</h2><span class="small faint" id="mine-n"></span></div>
           <div class="grid" id="mine"></div>
         </section>
+        <section class="shelf recommended" aria-labelledby="rec-h" id="recbox" hidden>
+          <div class="shelf-head"><h2 id="rec-h">Recommended for you</h2><span class="small faint" id="rec-n"></span></div>
+          <div class="grid" id="rec"></div>
+        </section>
         <section class="shelf available" aria-labelledby="all-h">
           <div class="shelf-head"><h2 id="all-h">Available</h2><span class="small faint" id="all-n"></span></div>
           <p class="small muted shelf-hint">Open one to look around. It moves up to your courses once you start it, or add it with ${raw(icon("plus", 12))}.</p>
@@ -49,14 +53,18 @@ export default async function home(view, scope) {
           <p class="muted">Name any subject, pick how deep to go, and the AI writes you a course.</p>
           ${raw(who.user?.can_create ? `<a class="button" href="#/new">${icon("plus", 15)}Start your first course</a>` : `<p class="small faint">When an author publishes a course, it shows up here.</p>`)}</div>`)}`;
     if (!courses.length) return;
-    const others = courses.filter((c) => !c.mine);
+    const recommended = courses.filter((c) => !c.mine && c.recommended);
+    const others = courses.filter((c) => !c.mine && !c.recommended);
     const tags = [...new Set(courses.flatMap((c) => c.tags))].sort();
     const paint = () => {
       const q = filter.q.trim().toLowerCase();
       const hit = (c) => (!filter.tag || c.tags.includes(filter.tag))
         && (!q || [c.title, c.subject, c.summary, ...c.tags].join(" ").toLowerCase().includes(q));
-      const m = mine.filter(hit), a = others.filter(hit);
+      const m = mine.filter(hit), a = others.filter(hit), r = recommended.filter(hit);
       const filtered = q || filter.tag;
+      view.querySelector("#recbox").hidden = !r.length;
+      view.querySelector("#rec").innerHTML = r.map(card).join("");
+      view.querySelector("#rec-n").textContent = filtered ? `${r.length} of ${recommended.length}` : `${recommended.length}`;
       view.querySelector("#mine").innerHTML = m.length ? m.map(card).join("")
         : html`<div class="panel empty-shelf small muted">${filtered ? "None of your courses match." : "Nothing here yet. Start a course below, or pin one, and it stays up here."}</div>`;
       view.querySelector("#all").innerHTML = a.length ? a.map(card).join("")
@@ -76,8 +84,10 @@ export default async function home(view, scope) {
       const json = what === "pin" ? { pinned: true } : what === "unpin" ? { pinned: false }
         : what === "add" ? { shelf: "mine" } : { shelf: "aside" };
       try {
-        await api(`/api/courses/${id}/shelf`, { method: "PUT", json });
-        toast({ pin: "Pinned to the top.", unpin: "Unpinned.", add: "Added to your courses.", aside: "Moved to available. Your progress is kept." }[what]);
+        if (what === "notnow") await api(`/api/courses/${id}/recommendations/dismiss`, { method: "POST" });
+        else await api(`/api/courses/${id}/shelf`, { method: "PUT", json });
+        toast({ pin: "Pinned to the top.", unpin: "Unpinned.", add: "Added to your courses.", aside: "Moved to available. Your progress is kept.",
+          notnow: "Moved to available." }[what]);
         draw(await api("/api/courses"));
       } catch (err) { toast(err.message, true); }
     });
@@ -110,6 +120,7 @@ export default async function home(view, scope) {
 
 function actions(c) {
   const b = (what, ic, label) => html`<button class="icon-btn" data-shelf="${what}" data-id="${c.id}" title="${label}" aria-label="${label}: ${c.title}">${raw(icon(ic, 15))}</button>`;
+  if (!c.mine && c.recommended) return b("notnow", "x", "Not now") + b("add", "plus", "Add to my courses");
   if (!c.mine) return b("add", "plus", "Add to my courses");
   return (c.pinned ? b("unpin", "pin-off", "Unpin") : b("pin", "pin", "Pin to the top")) + b("aside", "archive", "Move to available");
 }
@@ -126,6 +137,7 @@ function card(c) {
     <div class="sum">${c.summary || c.subject}</div>
     ${raw(c.tags.length ? html`<div class="tags">${c.tags.map((t) => raw(html`<span class="tag">${t}</span>`))}</div>` : "")}
     ${raw(team() && c.author ? html`<div class="small faint">by ${c.author}</div>` : "")}
+    ${raw(c.recommended && !c.mine ? html`<div class="rec-note small">${raw(icon("thumbs-up", 13))}<span>Recommended by ${c.recommended.by}${c.recommended.note ? `: “${c.recommended.note}”` : ""}</span></div>` : "")}
     ${raw(c.error ? html`<div class="small" style="color:var(--bad)">Needs attention: ${c.error}</div>` : "")}
     ${raw(p.sessions ? html`<div class="bar"><span style="width:${Math.round(share * 100)}%"></span></div>` : "")}
     <div class="foot"><span>${p.sessions ? `${p.done} / ${p.sessions} sessions` : ""}</span>

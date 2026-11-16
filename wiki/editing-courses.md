@@ -94,7 +94,8 @@ At the top of a session, for authors and admins:
 - When a question or its answer key changes, people who already answered keep their result, with a note that the
   question changed since; nothing is marked again behind their back. Taking a question out keeps their answers too.
 - **New version of the session** has the AI write the whole session again, with anything you'd like different, as a
-  draft. The live session stays as it is until you accept; then its old questions and pictures are archived with
+  draft. Like a new session, the draft is read through by a second model first; major problems get one more try,
+  and anything still wrong is listed at the top of the review. The live session stays as it is until you accept; then its old questions and pictures are archived with
   everyone's answers, and **History** at the top of the session can bring that version back.
 
 ## Changing the plan
@@ -152,6 +153,19 @@ The **Course** tab:
   achievements**. People keep what they've already earned.
 - **Share or keep a copy**: see below.
 - **Delete this course** (its owner or an admin): removes it and everything in it, for everyone. It asks first.
+- **What it costs**: the course's owner and admins see its AI spend so far, this month and in all, next to its
+  subject and depth.
+
+## Recommending a course (team mode)
+
+<img src="images/recommend.png" alt="Recommend The Physics of Music: everyone, or people picked from a list, with an optional note" width="100%">
+
+On a published course, authors and admins have **recommend** under the title. Pick **Everyone** (everyone who signs
+in, now and later) or tick people, add a note if you like, and press **Recommend**. It shows on their home page under
+**Recommended for you** until they start the course or say not now. There are no deadlines and nothing to track:
+the dashboard already shows who's taking what. The same dialog lists who it's recommended to; **take back** removes one
+(yours, or anyone's if you're an admin). Recommending the same person again replaces the older one and shows it again
+even if they'd said not now.
 
 ## Printing and sharing
 

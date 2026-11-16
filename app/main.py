@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (achievements, activity, audit, auth, budget, changes, dashboard, db, editing, flags, gemini, jobs, learning, library, media, package, pipeline,
+               recommend, texts,
                pricing, providers, verify)
 from .pipeline import Problem
 from .tiers import KIND_LABEL, TIERS, public as tiers_public
@@ -186,9 +187,24 @@ def whoami(request: Request) -> dict:
         try:
             info["user"] = auth.current(c, request.cookies.get(auth.COOKIE), allow_must_change=True)
             info["user"]["can_create"] = can_create(c, info["user"])
+            info["upload_note"] = texts.get(c, "upload_note")
+            if not texts.welcomed(c, info["user"]["id"]):
+                info["welcome"] = texts.get(c, "welcome_text")
         except auth.AuthError:
             pass
         return info
+
+
+class WelcomedIn(BaseModel):
+    seen: bool = True
+
+
+@app.post("/api/me/welcomed")
+def welcomed(body: WelcomedIn, user: Me) -> dict:
+    """The welcome was closed (or, with seen=false, asked for again)."""
+    with db.tx() as c:
+        texts.mark_welcomed(c, user["id"], body.seen)
+        return {"welcome": None if body.seen else texts.get(c, "welcome_text")}
 
 
 class MeIn(BaseModel):
@@ -457,6 +473,8 @@ def get_settings(user: Me) -> dict:
                 "budget_monthly_usd": budget.cap(c), "mode": auth.mode(),
                 "review_required": db.get_setting(c, "review_required") == "1",
                 "learner_courses": db.get_setting(c, "learner_courses") == "1", "learner_cap_usd": budget.learner_cap(c),
+                "welcome_text": texts.get(c, "welcome_text"), "upload_note": texts.get(c, "upload_note"),
+                "texts_default": texts.DEFAULTS,
                 "personal_password": auth.mode() == "personal" and bool(auth.owner(c)["password_hash"])}
 
 
@@ -470,6 +488,9 @@ class SettingsIn(BaseModel):
     learner_courses: bool | None = None
     learner_cap_usd: float | None = None
     clear_learner_cap: bool = False
+    welcome_text: str | None = None     # "" goes back to the built-in text
+    upload_note: str | None = None
+    welcome_again: bool = False         # show the welcome to everyone once more
 
 
 @app.put("/api/settings")
@@ -520,6 +541,14 @@ def put_settings(body: SettingsIn, user: Me) -> dict:
                 raise Problem("Pick a monthly limit per learner between $0 and $10,000, or clear it.")
             db.set_setting(c, "learner_cap_usd", str(body.learner_cap_usd))
             audit.log(c, "settings.learner_cap", "setting", "learner_cap_usd", {"monthly_usd": body.learner_cap_usd})
+        for key in ("welcome_text", "upload_note"):
+            val = getattr(body, key)
+            if val is not None and texts.put(c, key, val):
+                audit.log(c, f"settings.{key}", "setting", key, {"custom": bool(val.strip())})
+        if body.welcome_again:
+            for u in c.execute("SELECT id FROM users").fetchall():
+                texts.mark_welcomed(c, u["id"], False)
+            audit.log(c, "settings.welcome_again", "setting", "welcome_text")
         jobs.resume_waiting(c)  # a new key, model or budget may unblock paused work
     return get_settings(user)
 
@@ -758,6 +787,7 @@ def _author_name(c, uid: int) -> str:
 def list_courses(user: Me) -> list[dict]:
     with db.tx() as c:
         out = []
+        recs = recommend.for_user(c, user["id"]) if auth.mode() == "team" else {}
         rows = c.execute("SELECT co.*, o.at AS my_open FROM courses co LEFT JOIN course_opens o ON o.course_id=co.id AND o.user_id=? "
                          "ORDER BY coalesce(o.at, co.published_at, co.created_at) DESC", (user["id"],)).fetchall()
         for r in rows:
@@ -774,7 +804,8 @@ def list_courses(user: Me) -> list[dict]:
                         "created_at": r["created_at"], "last_opened_at": r["my_open"], "visibility": r["visibility"],
                         "author": _author_name(c, r["author_id"]), "can_edit": auth.can_edit(user, r),
                         "own": auth.owns(user, r), "suggested": bool(r["suggested_at"]) and r["visibility"] != "published",
-                        "reading_mode": learning.reading_mode(c, r["id"], user["id"])})
+                        "reading_mode": learning.reading_mode(c, r["id"], user["id"]),
+                        "recommended": recs.get(r["id"]) if r["visibility"] == "published" else None})
         return out
 
 
@@ -833,10 +864,52 @@ def get_course(course_id: str, user: Me) -> dict:
             "achievements": achievements.listing(c, course_id, user["id"]),
             "themed_achievements": achievements.themed(c, course_id) if mine else [],
         }
-        if auth.at_least(user, "admin"):
-            out["spend"] = c.execute("SELECT coalesce(sum(cost_usd),0) AS s FROM llm_calls WHERE course_id=?",
-                                     (course_id,)).fetchone()["s"]
+        if auth.at_least(user, "admin") or auth.owns(user, r):   # what a course costs: its owner and admins
+            sp = c.execute("SELECT coalesce(sum(cost_usd),0) AS s, coalesce(sum(CASE WHEN at >= ? THEN cost_usd END),0) AS m "
+                           "FROM llm_calls WHERE course_id=?", (budget.month_start_utc(), course_id)).fetchone()
+            out["spend"], out["spend_month"] = sp["s"], sp["m"]
+        out["can_recommend"] = (auth.mode() == "team" and auth.at_least(user, "author") and r["visibility"] == "published")
         return out
+
+
+# ---------- recommending a course ----------
+
+@app.get("/api/courses/{course_id}/recommendations")
+def get_recommendations(course_id: str, user: Me) -> dict:
+    team_only()
+    auth.require(user, "author")
+    with db.tx() as c:
+        viewable(c, user, course_id)
+        return {"people": recommend.people(c, user), "recommendations": recommend.listing(c, course_id, user)}
+
+
+class RecommendIn(BaseModel):
+    everyone: bool = False
+    to: list[int] = []
+    note: str = ""
+
+
+@app.post("/api/courses/{course_id}/recommendations")
+def post_recommendation(course_id: str, body: RecommendIn, user: Me) -> dict:
+    with db.tx() as c:
+        row = viewable(c, user, course_id)
+        n = recommend.create(c, user, row, body.everyone, body.to, body.note)
+        return {"added": n, "recommendations": recommend.listing(c, course_id, user)}
+
+
+@app.delete("/api/recommendations/{rec_id}")
+def delete_recommendation(rec_id: int, user: Me) -> dict:
+    with db.tx() as c:
+        cid = recommend.remove(c, user, rec_id)
+        return {"recommendations": recommend.listing(c, cid, user)}
+
+
+@app.post("/api/courses/{course_id}/recommendations/dismiss")
+def dismiss_recommendation(course_id: str, user: Me) -> dict:
+    with db.tx() as c:
+        viewable(c, user, course_id)
+        recommend.dismiss(c, user["id"], course_id)
+        return {"ok": True}
 
 
 class Answers(BaseModel):

@@ -15,6 +15,8 @@ See [index](index.md). Code: [app/static/](../../app/static/). Plain HTML, CSS a
 | [js/tutor.js](../../app/static/js/tutor.js) | The tutor bubble and its chat window (`mountTutor`, `openChat`, `removeTutor`) |
 | [js/sectionmenu.js](../../app/static/js/sectionmenu.js) | The right-click section menu and its Edit / Rewrite / Add dialogs, History and Flag |
 | [js/review.js](../../app/static/js/review.js) | The word diff, the review dialog (accept or discard a draft), the history dialog (restore), the flag dialog, and the course page's Changes and Flags tabs |
+| [js/recommend.js](../../app/static/js/recommend.js) | The recommend dialog: everyone or picked people, a note, and the list with take back |
+| [js/welcome.js](../../app/static/js/welcome.js) | The one-time welcome (shown by the router while `/api/me` returns `welcome`) and "show it again" |
 | [js/theme.js](../../app/static/js/theme.js) | Applies the saved theme before first paint |
 | [js/readingmode.js](../../app/static/js/readingmode.js) | The Reading mode switch (course sidebar and session toolbar) and the list of quiz-like widgets it hides |
 | [sw.js](../../app/static/sw.js) | The service worker, served at `/sw.js` with its build stamp ([below](#installable-app)) |

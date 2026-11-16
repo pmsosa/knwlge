@@ -1,6 +1,6 @@
 // The tutor: a round chat bubble in the corner of a course or session page. It opens a small chat window above it.
 // Questions about one question, or about a passage the learner selected, open the same window.
-import { act, api, el, esc, html, raw } from "./util.js";
+import { act, api, el, esc, html, raw, uploadNote } from "./util.js";
 import { icon } from "./icons.js";
 import { md } from "./md.js";
 
@@ -63,6 +63,7 @@ function open(quote = "", section = false) {
       <button type="button" class="link small" data-act="unquote" aria-label="Don't include this passage">${raw(icon("x", 14))}</button></div>` : "")}
     <form class="tutor-input"><textarea rows="2" placeholder="${quote ? "What would you like to know about it?" : "Ask anything… (Enter sends)"}"></textarea>
       <button type="submit" aria-label="Send">${raw(icon("arrow-up", 18))}</button></form>
+    ${raw(uploadNote())}
   </section>`);
   document.body.append(p);
   state.panel = p;

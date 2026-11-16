@@ -31,6 +31,11 @@ const RANK = { learner: 0, author: 1, admin: 2 };
 export const can = (role) => !!who.user && RANK[who.user.role] >= RANK[role];
 export const team = () => who.mode === "team";
 
+/** The admin's one-line reminder about what not to send, for under upload and send buttons. */
+export function uploadNote() {
+  return who.upload_note ? `<p class="upload-note small faint">${esc(who.upload_note)}</p>` : "";
+}
+
 export async function api(path, { method = "GET", json, form } = {}) {
   const opts = { method, headers: { "x-knwlge": "1" } };
   if (json !== undefined) {

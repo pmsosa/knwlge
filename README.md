@@ -174,7 +174,9 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 - **Achievements** - a built-in set on every course plus two or three course-themed ones written with the plan, for exploring and finishing, never for speed
 - **Dashboard and an opt-in feed (team mode)** - admins see who is taking what, per-session progress through each course, where answers are often missed and spend by provider; each person chooses whether their finished sessions and achievements appear in the feed
 - **Personal or team** - just you (open, or with an optional password), or accounts with learner, author and admin roles, drafts and publishing, everyone's progress their own, and an audit log of who did what. Authors change any course; an admin can make changes to others' courses wait for review, let learners make private courses of their own, and give every learner the same monthly AI allowance
-- **Costs in the open** - every call logged with its tokens and cost, by course, person and kind of work; an optional monthly budget that pauses work when reached
+- **Recommend a course (team mode)** - authors and admins suggest a published course to people or everyone, with a note; it shows on their home page until they start it or say not now. No deadlines
+- **A welcome and a reminder** - a one-time welcome that explains how it works, and a line under every upload and send button about what not to send; admins can change both
+- **Costs in the open** - every call logged with its tokens and cost, by course, person and kind of work; an optional monthly budget that pauses work when reached; a course's owner sees what it costs
 - **Desktop and phone** - an app-like layout where only content scrolls, a folding menu on phones, light and dark (Paper style); installable as an app over HTTPS
 
 ## Architecture
@@ -199,7 +201,7 @@ flowchart LR
 | Course pipeline (`app/pipeline.py`, `prompts.py`, `tiers.py`) | Questions, plan, sessions, checks and the reading list, each a JSON-Schema prompt |
 | Learning (`app/learning.py`) | Attempts, marking, warm-ups and spaced review, progress, the tutor |
 | Jobs and providers (`app/jobs.py`, `providers.py`, `gemini.py`, `budget.py`, `pricing.py`) | The queue and its worker thread, one interface over Gemini, OpenAI, Anthropic (official SDK) and OpenAI-compatible endpoints, cost logging and the budget |
-| Library and people (`app/library.py`, `achievements.py`, `activity.py`, `dashboard.py`) | Tags and each person's shelves, achievements, the opt-in feed and the admin dashboard |
+| Library and people (`app/library.py`, `achievements.py`, `activity.py`, `dashboard.py`, `recommend.py`, `texts.py`) | Tags and each person's shelves, achievements, the opt-in feed, the admin dashboard, recommendations, and the welcome and upload reminder |
 | Packages (`app/package.py`) | `.knwlge` export and the untrusted import |
 | Changes and flags (`app/changes.py`, `flags.py`) | Drafts and review, versions and rollback, session and plan rewrites that archive instead of deleting, learners' flags with an AI second look |
 | Media and checks (`app/media.py`, `verify.py`) | Lesson media and link checking, run in the worker's idle time, public addresses only |
@@ -287,7 +289,8 @@ knwlge/
 │   ├── changes.py      # drafts, review, versions and rollback, session and plan changes; flags.py, learners' flags
 │   ├── editing.py      # Markdown export, renaming, taking questions out; package.py the .knwlge export and import
 │   ├── jobs.py         # job queue and worker; providers.py (Gemini, OpenAI, Anthropic, compatible), gemini.py, budget.py, pricing.py
-│   ├── library.py      # tags and each person's shelves; achievements.py, activity.py (feed), dashboard.py
+│   ├── library.py      # tags and each person's shelves; achievements.py, activity.py (feed), dashboard.py,
+│   │                   #   recommend.py (recommending courses), texts.py (the welcome and upload reminder)
 │   ├── media.py        # lesson media; verify.py checks reading suggestions
 │   ├── auth.py         # modes, accounts, roles; accounts.py (CLI), audit.py
 │   ├── demo.py         # made-up demo data

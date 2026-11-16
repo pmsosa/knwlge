@@ -1,6 +1,7 @@
 // Your own account: the name others see, and (where there is one) your password.
 import { $, act, ago, api, html, raw, team, toast, who } from "../util.js";
 import { icon } from "../icons.js";
+import { welcomeAgain } from "../welcome.js";
 
 export default async function account(view) {
   const u = who.user;
@@ -18,7 +19,9 @@ export default async function account(view) {
     <div id="share"></div>
     <hr><h2>Your achievements</h2><div id="achs"><p class="muted small">Loading…</p></div>
     <div id="myflags"></div>
+    <hr><button class="link small" id="welcomeagain">${raw(icon("sparkles", 14))}Show the welcome again</button>
   </div>`;
+  $("#welcomeagain", view).addEventListener("click", () => welcomeAgain().catch((e) => toast(e.message, true)));
   api("/api/me/allowance").then((a) => {
     if (a.cap == null) return;
     const left = Math.max(0, a.cap - a.used);
