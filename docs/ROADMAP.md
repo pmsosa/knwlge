@@ -57,6 +57,11 @@ Tick items off here as they land.
 - [x] **v0.5** A one-time welcome screen, and a one-line reminder under upload and send buttons about what not to upload;
       both texts editable by admins
 
+## Phase 4b: apps
+
+- [ ] Desktop apps (Mac App Store, Windows download) and later Android, each person with their own copy and courses
+      shared as `.knwlge` files: see [APPS-PLAN](APPS-PLAN.md)
+
 ## Phase 5: hands-on labs
 
 - [ ] Its own design document first: per-learner sandboxes on a separate machine, started and checked by Knwlge
