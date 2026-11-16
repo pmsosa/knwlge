@@ -94,7 +94,8 @@ At the top of a session, for authors and admins:
 - When a question or its answer key changes, people who already answered keep their result, with a note that the
   question changed since; nothing is marked again behind their back. Taking a question out keeps their answers too.
 - **New version of the session** has the AI write the whole session again, with anything you'd like different, as a
-  draft. The live session stays as it is until you accept; then its old questions and pictures are archived with
+  draft. Like a new session, the draft is read through by a second model first; major problems get one more try,
+  and anything still wrong is listed at the top of the review. The live session stays as it is until you accept; then its old questions and pictures are archived with
   everyone's answers, and **History** at the top of the session can bring that version back.
 
 ## Changing the plan

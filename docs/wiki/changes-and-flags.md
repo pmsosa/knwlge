@@ -34,7 +34,10 @@ reviewer, who asked, and `auto_publish`.
 
 - **AI changes** (`ask_ai`) are always drafts. They're jobs whose `ref` is `change:<id>`: `revise` (a chunk, rewrite
   or add), `revise_item` (one question, same type, cleaned like a hand edit), `redo_session` (the whole session, the
-  same prompt as writing it; problems the app finds trigger one more try, then become notes) and `replan` (the plan:
+  same prompt as writing it; problems the app finds trigger one more try, then become notes; then a `redo_check` job,
+  the same second read-through a new session gets, while the draft stays `working` with its proposal stored: major
+  issues trigger one more try if there's been only one, then become "Second read-through:" notes; if the check can't
+  run, the draft goes to review saying so) and `replan` (the plan:
   kept sessions by id, new ones with an empty id, removed ones left out; ids the model made up become new sessions).
   When the job finishes the draft is `pending`; if it was asked for with "publish straight away" by someone who can
   publish, it's accepted at once (`accept(user=None)`).

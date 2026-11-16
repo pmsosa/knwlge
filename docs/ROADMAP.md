@@ -43,7 +43,7 @@ Tick items off here as they land.
 - [x] **v0.4** Roles: authors change any course; learners may make private courses of their own (an admin switch)
       and suggest them for everyone; one monthly AI allowance for every learner, covering all their AI use
 - [ ] Optional: "recommend to" people or the whole group (a nudge, no deadlines)
-- [ ] The second read-through for a rewritten session draft (today the app's own checks run; the AI check doesn't)
+- [x] The second read-through for a rewritten session draft, as for a new session
 
 ## Phase 3: other AI providers (follow-ups)
 

@@ -285,3 +285,26 @@ def test_flags(people):
         assert reading[0]["id"] not in [r["id"] for r in learner.get(f"/api/courses/{cid}").json()["reading"]]
     assert author.get(f"/api/courses/{cid}/flags").json()["flags"] == []
     assert len(author.get(f"/api/courses/{cid}/flags", params={"all": 1}).json()["flags"]) >= 3
+
+
+def test_session_rewrite_gets_second_read_through(client):
+    import fakes
+    cid = ready_course(client)
+    sid = first_session(client, cid)
+    fakes.CALLS.clear()
+    fakes.OVERRIDES["ok"] = {"ok": False, "issues": [{"where": "practice q1", "problem": "The answer is wrong", "severity": "major"}]}
+    change = client.post(f"/api/sessions/{sid}/regenerate", json={"text": "more examples"}).json()["change"]
+    drain()
+    redo = [x for x in fakes.CALLS if "chunks" in x["body"]["generationConfig"].get("responseJsonSchema", {}).get("properties", {})]
+    assert len(redo) == 2 and "practice q1: The answer is wrong" in "".join(
+        p.get("text", "") for p in redo[-1]["body"]["contents"][0]["parts"]), "one more try with what the reader found"
+    d = client.get(f"/api/changes/{change}").json()
+    assert d["status"] == "pending" and d["after"]
+    assert "Second read-through: practice q1: The answer is wrong" in d["notes"], "still wrong after the retry: it says so"
+    # a reader that's happy lets the draft through with no notes
+    client.post(f"/api/changes/{change}/discard", json={})
+    fakes.OVERRIDES.pop("ok")
+    change = client.post(f"/api/sessions/{sid}/regenerate", json={"text": "fewer examples"}).json()["change"]
+    drain()
+    d = client.get(f"/api/changes/{change}").json()
+    assert d["status"] == "pending" and not any("read-through" in n for n in d["notes"])

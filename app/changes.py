@@ -699,7 +699,42 @@ def _on_redo_session(c: sqlite3.Connection, job: sqlite3.Row, res) -> None:
         jobs.enqueue(c, "redo_session", req, course_id=job["course_id"], ref=job["ref"], priority=jobs.PRIORITY_NOW,
                      user_id=job["user_id"])
         return
-    _ready(c, ch, content, [f"Still to fix: {p}" for p in problems] + _search_note(res))
+    # the same second read-through a new session gets; the draft waits (still 'working') until it's done
+    c.execute("UPDATE changes SET proposed_json=?, notes_json=? WHERE id=?",
+              (db.dumps(content), db.dumps([f"Still to fix: {p}" for p in problems] + _search_note(res)), ch["id"]))
+    course = _course(c, job["course_id"])
+    jobs.enqueue(c, "redo_check", prompts.check(course["title"], dict(s), pipeline._for_check(content)),
+                 course_id=job["course_id"], ref=job["ref"], priority=jobs.PRIORITY_NOW, user_id=job["user_id"])
+
+
+def _redo_check_failed(c: sqlite3.Connection, job: sqlite3.Row, err: str) -> None:
+    # the check is a bonus: if it can't run, the draft still goes to review, saying so
+    ch = _change_of(c, job)
+    if ch is not None:
+        _ready(c, ch, db.loads(ch["proposed_json"]),
+               db.loads(ch["notes_json"], []) + [f"The second read-through couldn't run: {err}"])
+
+
+@jobs.handler("redo_check", on_failed=_redo_check_failed)
+def _on_redo_check(c: sqlite3.Connection, job: sqlite3.Row, res) -> None:
+    ch = _change_of(c, job)
+    if ch is None:
+        return
+    major = [i for i in res.data.get("issues", []) if i.get("severity") == "major"]
+    found = [f"{i.get('where', '')}: {i.get('problem', '')}" for i in major]
+    tries = c.execute("SELECT count(*) AS n FROM jobs WHERE kind='redo_session' AND ref=?", (job["ref"],)).fetchone()["n"]
+    if found and tries < 2:   # one more try with what the reader found, like a new session
+        first = c.execute("SELECT request_json FROM jobs WHERE kind='redo_session' AND ref=? ORDER BY id LIMIT 1",
+                          (job["ref"],)).fetchone()
+        req = db.loads(first["request_json"], {})
+        req["prompt"] += "\n\nA reviewer found these problems in your previous draft; fix them all:\n" + "\n".join(
+            f"- {p}" for p in found)
+        c.execute("UPDATE changes SET proposed_json=NULL, notes_json='[]' WHERE id=?", (ch["id"],))
+        jobs.enqueue(c, "redo_session", req, course_id=job["course_id"], ref=job["ref"], priority=jobs.PRIORITY_NOW,
+                     user_id=job["user_id"])
+        return
+    _ready(c, ch, db.loads(ch["proposed_json"]),
+           db.loads(ch["notes_json"], []) + [f"Second read-through: {p}" for p in found])
 
 
 @jobs.handler("replan", on_failed=_failed)

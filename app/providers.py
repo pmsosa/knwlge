@@ -63,7 +63,7 @@ def role_of(kind: str, tier: str | None) -> str:
         return "writing"
     if kind == "replan":
         return "planning"
-    if kind in ("check", "flag_check"):
+    if kind in ("check", "redo_check", "flag_check"):
         return "checks"
     if kind == "mark":
         return "checks" if tier == "lite" else "marking"
