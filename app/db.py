@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
@@ -506,6 +506,29 @@ def _migrate_to_v5(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
 
 
+SCHEMA_V6 = """
+-- a published course recommended to someone (to_user) or everyone (NULL): a nudge on their home page
+CREATE TABLE IF NOT EXISTS recommendations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    to_user INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    by_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS recommendations_to ON recommendations(to_user, course_id);
+CREATE INDEX IF NOT EXISTS recommendations_course ON recommendations(course_id);
+
+-- "not now": hides recommendations of that course made before it
+CREATE TABLE IF NOT EXISTS rec_dismissed (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
+);
+"""
+
+
 POST_SCHEMA = """
 CREATE INDEX IF NOT EXISTS attempts_user ON attempts(user_id, item_id, id);
 CREATE INDEX IF NOT EXISTS chat_user ON chat_messages(course_id, scope, user_id, id);
@@ -531,6 +554,7 @@ def init() -> None:
             raise
         _migrate_to_v4(conn)
         _migrate_to_v5(conn)
+        conn.executescript(SCHEMA_V6)
         conn.executescript(POST_SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
