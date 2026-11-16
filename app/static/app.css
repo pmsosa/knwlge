@@ -233,10 +233,10 @@ label.field { display: block; margin: 0 0 4px; font-size: 13px; font-weight: 500
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .tag { font-size: 11px; color: var(--iron); background: var(--mist); border-radius: var(--r-tag); padding: 1px 7px; }
 .library-tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 0 0 18px; }
-.library-tools .search { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; max-width: 26rem; padding: 0 12px;
+.library-tools .search, .modal .search { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; max-width: 26rem; padding: 0 12px;
   background: var(--bright); border: 1px solid var(--stone); border-radius: var(--r-btn); color: var(--graphite); }
-.library-tools .search:focus-within { border-color: var(--ink); }
-.library-tools .search input { border: 0; background: transparent; padding: 8px 0; flex: 1; min-width: 0; outline: none; box-shadow: none; }
+.library-tools .search:focus-within, .modal .search:focus-within { border-color: var(--ink); }
+.library-tools .search input, .modal .search input { border: 0; background: transparent; padding: 8px 0; flex: 1; min-width: 0; outline: none; box-shadow: none; }
 .tagbar { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { min-height: 28px; padding: 3px 11px; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
   background: var(--card); color: var(--iron); border: 1px solid var(--stone); border-radius: 999px; }
@@ -694,3 +694,16 @@ ul.feed.panel { padding: 6px 16px; }
 .switch-row { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; cursor: pointer; }
 .byline { flex-direction: column; align-items: flex-start; gap: 2px !important; margin-top: 4px; }
 @media print { .draft-bar, .flag-btn, [data-act="flag"], [data-act="flagfb"] { display: none !important; } }
+
+/* v0.5: recommendations, the welcome, the upload reminder */
+.rec-note { display: flex; gap: 6px; align-items: flex-start; color: var(--ink); }
+.rec-note .i { flex: none; margin-top: 2px; color: var(--blue); }
+.pick-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 32vh; overflow: auto; border: 1px solid var(--stone); border-radius: var(--r-card); }
+.pick-list li { padding: 6px 10px; border-bottom: 1px solid var(--stone); }
+.pick-list li:last-child { border-bottom: 0; }
+.rec-list { list-style: none; padding: 0; margin: 0; }
+.rec-list li { padding: 6px 0; border-bottom: 1px solid var(--stone); gap: 10px; }
+.modal.welcome { max-width: 36rem; }
+.modal.welcome .note { display: flex; gap: 8px; align-items: flex-start; }
+.upload-note { margin: 6px 0 0; }
+.tutor-panel .upload-note { padding: 0 10px 8px; margin: 0; }

@@ -1,4 +1,4 @@
-import { $, $$, act, api, ago, html, raw, toast } from "../util.js";
+import { $, $$, act, api, ago, html, raw, toast, who } from "../util.js";
 import { icon } from "../icons.js";
 
 export default async function settings(view) {
@@ -87,6 +87,18 @@ export default async function settings(view) {
         <div class="row"><span>$</span><input type="number" id="budget" min="0" step="1" value="${s.budget_monthly_usd ?? ""}" placeholder="No limit" style="max-width:9rem">
           <button class="ghost" id="savebudget">Save budget</button>
           ${raw(s.budget_monthly_usd ? `<button class="link small" id="clearbudget">No limit</button>` : "")}</div></div>
+    </div>
+    <div class="panel stack" id="words">
+      <div><h2>Welcome and reminder</h2>
+        <p class="muted small">Both start with built-in words; change them to suit your group. Clear a box to go back to the built-in text.</p></div>
+      <div><label class="field" for="wtext">Welcome</label>
+        <div class="field-hint">Shown once, the first time someone signs in (Markdown works). Anyone can see it again from their account page.</div>
+        <textarea id="wtext" rows="9">${s.welcome_text}</textarea></div>
+      <div><label class="field" for="unote">Reminder under upload and send buttons</label>
+        <div class="field-hint">One line about what not to upload or type: under file uploads, written answers and the tutor.</div>
+        <input type="text" id="unote" maxlength="300" value="${s.upload_note}"></div>
+      <div class="row"><button class="ghost" id="savewords">Save words</button>
+        <button class="link small" id="welcomeall">Show the welcome to everyone again</button></div>
     </div>
     ${raw(s.mode === "team" ? html`<div class="panel stack" id="teamrules">
       <div><h2>Changes and courses</h2></div>
@@ -247,6 +259,17 @@ export default async function settings(view) {
       } catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
     });
   }
+  $("#savewords", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    const r = await api("/api/settings", { method: "PUT", json: { welcome_text: $("#wtext", view).value, upload_note: $("#unote", view).value } });
+    $("#wtext", view).value = r.welcome_text;
+    $("#unote", view).value = r.upload_note;
+    who.upload_note = r.upload_note;
+    toast("Saved.");
+  }));
+  $("#welcomeall", view).addEventListener("click", (e) => act(e.currentTarget, async () => {
+    await api("/api/settings", { method: "PUT", json: { welcome_again: true } });
+    toast("Everyone sees the welcome next time they open Knwlge.");
+  }));
   $("#savecap", view)?.addEventListener("click", (e) => act(e.currentTarget, async () => {
     const v = $("#lcap", view).value;
     await api("/api/settings", { method: "PUT", json: v === "" || Number(v) === 0 ? { clear_learner_cap: true } : { learner_cap_usd: Number(v) } });

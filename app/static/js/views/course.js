@@ -1,9 +1,10 @@
-import { $, $$, act, ago, api, can, html, raw, team, toast, money, hours, KIND_LABEL } from "../util.js";
+import { $, $$, act, ago, api, can, html, raw, team, toast, money, hours, uploadNote, KIND_LABEL } from "../util.js";
 import { changesTab, flagsTab, openFlag } from "../review.js";
 import { readingSwitch, wireReadingSwitch } from "../readingmode.js";
 import { icon, KIND_ICON } from "../icons.js";
 import { md } from "../md.js";
 import { mountTutor } from "../tutor.js";
+import { openRecommend } from "../recommend.js";
 
 const WAITING = {
   questions: ["Writing a few questions for you…", "This takes a few seconds."],
@@ -176,7 +177,8 @@ function header(c) {
     <h1>${c.title}</h1><p class="summary">${c.summary}</p>
     ${raw(c.tags.length ? html`<div class="tags" style="margin-bottom:8px">${c.tags.map((t) => raw(html`<span class="tag">${t}</span>`))}</div>` : "")}
     <div class="row course-acts">${raw(shelfButtons(c))}
-      <a class="icon-btn" href="#/print/${c.id}" title="Print or save as PDF" aria-label="Print or save as PDF">${raw(icon("printer", 15))}</a></div>
+      <a class="icon-btn" href="#/print/${c.id}" title="Print or save as PDF" aria-label="Print or save as PDF">${raw(icon("printer", 15))}</a>
+      ${raw(c.can_recommend ? html`<button class="ghost small" data-recommend title="Suggest it to people, or everyone">${raw(icon("thumbs-up", 14))}Recommend</button>` : "")}</div>
     <div class="row small faint byline" style="gap:6px">${raw(team() && c.visibility === "draft" ? `<span class="pill teal">${c.suggested ? "suggested" : c.own && !can("author") ? "private" : "draft"}</span>` : "")}
       ${raw(team() ? html`<span>by ${c.author}</span>` : "")}
       <span title="${c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}">version ${c.version}${c.updated_at ? `, updated ${ago(c.updated_at)}` : ""}${c.updated_by && team() ? ` by ${c.updated_by}` : ""}</span></div>
@@ -202,6 +204,7 @@ function shelfButtons(c) {
 
 function wireShelf(view, c) {
   $("#head", view).addEventListener("click", async (e) => {
+    if (e.target.closest("[data-recommend]")) { openRecommend(c).catch((err) => toast(err.message, true)); return; }
     const b = e.target.closest("[data-shelf]");
     if (!b) return;
     const what = b.dataset.shelf;
@@ -343,6 +346,7 @@ function materialsTab(box, c) {
       : `<p class="small faint">Nothing yet.</p>`)}
     <div class="row"><input type="file" id="mf" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.txt,.md,.csv,.json,.tex,.py,.html,.xml,.yaml,.yml" style="max-width:24rem">
       <button class="ghost" id="up">${raw(icon("paperclip", 15))}Add files</button></div>
+    ${raw(uploadNote())}
     <details style="margin-top:1rem"><summary class="muted" style="cursor:pointer">Or type a note</summary>
       <input type="text" id="nt" placeholder="Title" style="margin-top:.6rem"><textarea id="nx" style="margin-top:.5rem" placeholder="What you already know, a wish for the course…"></textarea>
       <button class="ghost" id="addnote" style="margin-top:.5rem">${raw(icon("notebook-pen", 15))}Save note</button></details>
@@ -374,7 +378,7 @@ function manageTab(box, c) {
     <div><label class="field" for="ti">Title</label><div class="row"><input type="text" id="ti" value="${c.title}" style="max-width:32rem">
       <button class="ghost" id="rename">${raw(icon("pencil", 15))}Rename</button></div></div>
     ${raw(team() ? visibilityNote(c) : "")}
-    <div class="small muted">Subject: ${c.subject} · Depth: ${c.depth_label}${raw(c.spend !== undefined ? html` · AI spend on this course so far: ${money(c.spend)}` : "")}</div>
+    <div class="small muted">Subject: ${c.subject} · Depth: ${c.depth_label}${raw(c.spend !== undefined ? html` · AI spend on this course: ${money(c.spend_month)} this month, ${money(c.spend)} in all` : "")}</div>
     ${raw(c.plan && c.plan.prerequisites.length ? html`<div><b>Good to know first</b><ul>${c.plan.prerequisites.map((x) => raw(html`<li>${x}</li>`))}</ul></div>` : "")}
     <div><label class="field">What lessons can include</label>
       <div class="field-hint">Applies to sessions written from now on (new ones and rewrites).</div>

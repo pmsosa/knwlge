@@ -1,5 +1,5 @@
 // Questions, exercises and projects: answering them, feedback, showing answers, and editing. The tutor lives in tutor.js.
-import { $, act, api, celebrate, el, esc, html, raw, toast } from "./util.js";
+import { $, act, api, celebrate, el, esc, html, raw, toast, uploadNote } from "./util.js";
 import { icon } from "./icons.js";
 import { openChat } from "./tutor.js";
 import { md } from "./md.js";
@@ -125,6 +125,7 @@ function longItem(item, ctx) {
     <div class="row small" style="margin-top:.4rem">
       <label class="muted">Add a photo or PDF of your working: <input type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.heic,.pdf,.txt,.md"></label>
     </div>
+    ${raw(uploadNote())}
     ${raw(files)}
     <div class="actions">
       <button class="small" data-act="check">${last ? "Send again for feedback" : "Get feedback"}</button>

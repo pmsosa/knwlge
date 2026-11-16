@@ -44,6 +44,8 @@ ICONS = sorted({
     "footprints", "flag", "trophy", "dumbbell", "pen-line", "flame", "eye-off", "package",
     # v0.4: drafts, review, versions and flags
     "history", "git-compare", "inbox", "rotate-ccw", "send", "user-pen",
+    # v0.5: recommending, the upload reminder
+    "thumbs-up", "shield-alert",
 })
 
 

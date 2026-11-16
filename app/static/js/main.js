@@ -15,6 +15,7 @@ import dashboard from "./views/dashboard.js";
 import { enhance } from "./media.js";
 import { removeTutor } from "./tutor.js";
 import { icon, paintIcons } from "./icons.js";
+import { showWelcome } from "./welcome.js";
 
 // [pattern, view, nav item, minimum role, team mode only]
 const routes = [
@@ -35,6 +36,7 @@ const routes = [
 const view = document.getElementById("view");
 
 async function refreshWho() {
+  who.welcome = null;
   Object.assign(who, await api("/api/me"));
   // the nav shows only what this person can use (the server checks again on every request)
   const nav = $(".top nav");
@@ -92,6 +94,7 @@ async function route() {
   } catch (e) {
     view.innerHTML = html`<div class="note bad">${e.message || String(e)}</div>`;
   }
+  if (who.welcome && who.user) showWelcome();   // once, the first time someone signs in
   view.focus({ preventScroll: true });
 }
 

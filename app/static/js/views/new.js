@@ -1,4 +1,4 @@
-import { $, act, api, can, html, raw, team } from "../util.js";
+import { $, act, api, can, html, raw, team, uploadNote } from "../util.js";
 import { icon } from "../icons.js";
 
 export default async function newCourse(view) {
@@ -30,6 +30,7 @@ export default async function newCourse(view) {
         <div class="row"><button type="submit" id="go">${raw(icon("sparkles", 15))}Start</button>
           ${raw(can("admin") ? `<span class="small muted">Planning costs a few cents. Each AI illustration is about 3¢.</span>` : "")}
           ${raw(team() ? `<span class="small muted">It stays a draft only you can see until you publish it.</span>` : "")}</div>
+        ${raw(uploadNote())}
         </div>
         <div>
           <label class="field">What can lessons include?</label>
