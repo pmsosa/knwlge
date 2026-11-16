@@ -71,6 +71,28 @@ def respond(body: dict) -> dict:
     key = next(iter(props), "text")
     if key in OVERRIDES:
         return OVERRIDES[key]
+    if "verdict" in props:
+        if "looks fine" in prompt:
+            return {"verdict": "right", "reason": "It's correct as written.", "suggestion": ""}
+        return {"verdict": "wrong", "reason": "The answer key doesn't match the lesson.", "suggestion": "Fix the answer."}
+    if "note" in props and "sessions" in props:   # a plan change for a written course
+        ids = re.findall(r"- id (\S+): \d+\.", prompt)
+        keep = ids[:-1] if len(ids) > 1 else ids
+        out = [{"id": sid, "kind": "lesson", "title": f"Kept {i}", "topics": ["t"], "objectives": ["o"], "minutes": 30,
+                "rewrite": i == 1} for i, sid in enumerate(keep)]
+        out.insert(1, {"id": "", "kind": "lesson", "title": "A new session", "topics": ["new"], "objectives": ["o"], "minutes": 30,
+                       "rewrite": False})
+        return {"title": "Test Course", "summary": "Changed.", "note": "Added one, dropped the last.", "sessions": out}
+    if "prompt" in props and "answer" in props:   # one question rewritten
+        if "MULTIPLE-CHOICE" in prompt:
+            return {"title": "", "prompt": "Rewritten question?", "options": ["Yes", "No", "Maybe"], "answer": "Yes",
+                    "explanation": "Because.", "rubric": []}
+        if "NUMBER QUESTION" in prompt:
+            return {"title": "", "prompt": "How many?", "options": [], "answer": "42", "explanation": "Count them.", "rubric": []}
+        if "WRITTEN EXERCISE" in prompt:
+            return {"title": "Write it", "prompt": "Explain it again.", "options": [], "answer": "A model answer.",
+                    "explanation": "", "rubric": [{"criterion": "Clear", "points": 5, "description": "Says it plainly"}]}
+        return {"title": "", "prompt": "Say it in a phrase.", "options": [], "answer": "a phrase", "explanation": "", "rubric": []}
     if "questions" in props:
         return {"questions": [{"id": "goal", "text": "What draws you to it?", "kind": "text", "options": []},
                               {"id": "level", "text": "Your level?", "kind": "choice", "options": ["New", "Some"]}]}

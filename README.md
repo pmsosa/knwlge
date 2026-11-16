@@ -139,6 +139,18 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 <sub>A whole course on one page for Save as PDF, with or without answers. Or a .knwlge package that imports into any Knwlge.</sub>
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+<a href="wiki/editing-courses.md#drafts-and-review"><img src="wiki/images/review.png" alt="Reviewing an AI rewrite of a lesson section: the change word by word, with accept and discard" width="100%"></a><br>
+<b>Nothing goes live unseen</b><br>
+<sub>The AI's changes are drafts: see what changed, word by word, then accept or discard. Every version is kept, so you can always go back.</sub>
+</td>
+<td width="50%" valign="top">
+<a href="wiki/editing-courses.md#flags-from-learners"><img src="wiki/images/flags.png" alt="The Flags tab: a learner's flag on an answer key, judged likely wrong by a second look, with a suggested fix" width="100%"></a><br>
+<b>Learners spot mistakes, the AI double-checks</b><br>
+<sub>A flag on a wrong answer key gets a second look at once; authors see the likely-wrong ones first and turn one into a fix in a click.</sub>
+</td>
+</tr>
 </table>
 
 ## Features
@@ -153,13 +165,15 @@ Taken from a throw-away demo with made-up courses and people (`python -m app.dem
 - **Verified further reading** - books, videos, courses and podcasts, each one looked up before it's shown
 - **Reading mode** - just want to read? Each person can hide the questions, practice, written work and warm-ups on any course; they're still there when you switch it off
 - **A tutor** - a chat bubble on every course and session page; ask about the session, a question (it sees your attempt) or a selected passage
-- **Edit anything** - right-click a section to edit its Markdown, or have the AI rewrite it or add to it; edit questions; rewrite a whole session
+- **Edit anything, safely** - right-click a section to edit its Markdown, or have the AI rewrite it or add to it; rewrite a question, a whole session or the plan with the AI. Anything the AI writes is a draft you see before and after, word by word, before accepting it
+- **Every version kept** - each part, question, session and plan keeps its history (who, when, why) forever; restore any version. Rewriting a session or removing one from the plan never deletes anyone's answers, and an answer to a question that changed since keeps its result, with a note
+- **Flags** - learners flag a part, a question or its answer, unfair feedback or a reading item; the AI takes a second look at once, and authors get a queue, worst first, with one click to a draft fix
 - **Any AI provider, one per role** - Gemini built in; add OpenAI, Anthropic (Claude) or any OpenAI-compatible endpoint (LiteLLM, Ollama, vLLM, LM Studio) and pick a provider and model for planning, writing, checks, marking, the tutor, reading lists and illustrations; keys tested on entry, model lists filled in, prices per provider
 - **Your courses first** - the courses you're taking (started, added or pinned) above everything else available, with search and shared tags (suggested with the plan, edited by authors)
 - **Share, import and print** - a `.knwlge` package with the whole course (optionally your own progress), an import that treats the file as untrusted, Markdown export, and a print layout for Save as PDF
 - **Achievements** - a built-in set on every course plus two or three course-themed ones written with the plan, for exploring and finishing, never for speed
 - **Dashboard and an opt-in feed (team mode)** - admins see who is taking what, per-session progress through each course, where answers are often missed and spend by provider; each person chooses whether their finished sessions and achievements appear in the feed
-- **Personal or team** - just you (open, or with an optional password), or accounts with learner, author and admin roles, drafts and publishing, everyone's progress their own, and an audit log of who did what
+- **Personal or team** - just you (open, or with an optional password), or accounts with learner, author and admin roles, drafts and publishing, everyone's progress their own, and an audit log of who did what. Authors change any course; an admin can make changes to others' courses wait for review, let learners make private courses of their own, and give every learner the same monthly AI allowance
 - **Costs in the open** - every call logged with its tokens and cost, by course, person and kind of work; an optional monthly budget that pauses work when reached
 - **Desktop and phone** - an app-like layout where only content scrolls, a folding menu on phones, light and dark (Paper style); installable as an app over HTTPS
 
@@ -187,6 +201,7 @@ flowchart LR
 | Jobs and providers (`app/jobs.py`, `providers.py`, `gemini.py`, `budget.py`, `pricing.py`) | The queue and its worker thread, one interface over Gemini, OpenAI, Anthropic (official SDK) and OpenAI-compatible endpoints, cost logging and the budget |
 | Library and people (`app/library.py`, `achievements.py`, `activity.py`, `dashboard.py`) | Tags and each person's shelves, achievements, the opt-in feed and the admin dashboard |
 | Packages (`app/package.py`) | `.knwlge` export and the untrusted import |
+| Changes and flags (`app/changes.py`, `flags.py`) | Drafts and review, versions and rollback, session and plan rewrites that archive instead of deleting, learners' flags with an AI second look |
 | Media and checks (`app/media.py`, `verify.py`) | Lesson media and link checking, run in the worker's idle time, public addresses only |
 | Accounts (`app/auth.py`, `accounts.py`, `audit.py`) | Modes, sign-in, roles, account commands, the audit log |
 | SQLite | Courses, sessions, questions, everyone's progress, jobs, calls, the audit log (WAL mode) |
@@ -269,7 +284,8 @@ knwlge/
 │   ├── db.py           # schema, upgrades, transactions
 │   ├── pipeline.py     # making a course; prompts.py has every prompt and schema, tiers.py the depths
 │   ├── learning.py     # attempts, marking, warm-ups, progress, the tutor, materials
-│   ├── editing.py      # hand edits, section rewrites, Markdown export; package.py the .knwlge export and import
+│   ├── changes.py      # drafts, review, versions and rollback, session and plan changes; flags.py, learners' flags
+│   ├── editing.py      # Markdown export, renaming, taking questions out; package.py the .knwlge export and import
 │   ├── jobs.py         # job queue and worker; providers.py (Gemini, OpenAI, Anthropic, compatible), gemini.py, budget.py, pricing.py
 │   ├── library.py      # tags and each person's shelves; achievements.py, activity.py (feed), dashboard.py
 │   ├── media.py        # lesson media; verify.py checks reading suggestions

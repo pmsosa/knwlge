@@ -57,11 +57,13 @@ def role_of(kind: str, tier: str | None) -> str:
     """Which role a job belongs to, from its kind (and, for sessions and marking, the tier its prompt asked for)."""
     if kind in ("questions", "plan"):
         return "planning"
-    if kind == "session":
+    if kind in ("session", "redo_session"):
         return "planning" if tier == "pro" else "writing"
-    if kind == "revise":
+    if kind in ("revise", "revise_item"):
         return "writing"
-    if kind == "check":
+    if kind == "replan":
+        return "planning"
+    if kind in ("check", "flag_check"):
         return "checks"
     if kind == "mark":
         return "checks" if tier == "lite" else "marking"

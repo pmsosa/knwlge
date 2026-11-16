@@ -32,7 +32,9 @@ from the name in the top bar, with a link to the password change.
 ## Roles and courses
 
 `learner` < `author` < `admin`. `require(user, role)` on routes; `can_view(user, course)`: admins, the author, or a
-published course; `can_edit`: admins or the author. A course someone can't see answers "That course doesn't exist."
+published course, and for authors a learner's course suggested for everyone; `can_edit`: admins and authors on any
+course they can see, and anyone on their own course (learners make their own only when `learner_courses` is on);
+`can_publish_course` and `can_delete` are narrower ([changes-and-flags](changes-and-flags.md#who-publishes)). A course someone can't see answers "That course doesn't exist."
 Costs, settings, people and the audit log are admin-only. In personal mode the owner can do everything.
 
 ## Audit log

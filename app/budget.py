@@ -90,3 +90,50 @@ def summary(c: sqlite3.Connection) -> dict:
         "by_kind": by_kind,
         "by_user": by_user,
     }
+
+
+# ---------- a monthly AI allowance for each learner (team mode): one amount, the same for every learner ----------
+
+def learner_cap(c: sqlite3.Connection) -> float | None:
+    v = db.get_setting(c, "learner_cap_usd")
+    return float(v) if v else None
+
+
+def learner_spend(c: sqlite3.Connection, uid: int) -> float:
+    """This month's spend on everything a learner's own actions used: the tutor, marking their written answers, flag
+    checks, and making and editing their own courses."""
+    return c.execute("SELECT coalesce(sum(cost_usd), 0) AS s FROM llm_calls WHERE user_id=? AND at >= ?",
+                     (uid, month_start_utc())).fetchone()["s"]
+
+
+ALLOWANCE_USED = "You've used this month's AI allowance. It starts again on the 1st; an admin can raise it."
+
+
+def check_learner(c: sqlite3.Connection, uid: int) -> None:
+    """Refuse new AI work for a learner who has used their allowance (so nothing waits silently)."""
+    if over_learner_cap(c, uid):
+        from .pipeline import Problem
+        raise Problem(ALLOWANCE_USED)
+
+
+def over_learner_cap(c: sqlite3.Connection, uid: int) -> bool:
+    cap = learner_cap(c)
+    if cap is None:
+        return False
+    u = c.execute("SELECT role FROM users WHERE id=?", (uid,)).fetchone()
+    return bool(u and u["role"] == "learner" and learner_spend(c, uid) >= cap)
+
+
+def hold_capped_learners(c: sqlite3.Connection) -> None:
+    """Park queued work a learner started once they've used their allowance; let it go when they're under again."""
+    cap = learner_cap(c)
+    capped = [] if cap is None else [r["id"] for r in c.execute("SELECT id FROM users WHERE role='learner'")
+                                     if learner_spend(c, r["id"]) >= cap]
+    mark = ",".join("?" * len(capped)) or "NULL"
+    c.execute(f"UPDATE jobs SET status='queued', wait_reason=NULL WHERE status='waiting' AND wait_reason='learner_cap' "
+              f"AND (user_id IS NULL OR user_id NOT IN ({mark}))", capped)
+    if capped:
+        c.execute(f"UPDATE jobs SET status='waiting', wait_reason='learner_cap', updated_at=? WHERE status='queued' "
+                  f"AND user_id IN ({mark})",
+                  (db.now(), *capped))
+

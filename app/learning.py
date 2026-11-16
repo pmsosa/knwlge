@@ -9,7 +9,7 @@ import random
 import re
 import sqlite3
 
-from . import db, gemini, jobs, media, prompts
+from . import budget, db, gemini, jobs, media, prompts
 from .pipeline import Problem, _norm, _num
 
 UPLOAD_TYPES = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
@@ -60,7 +60,10 @@ def public_item(c: sqlite3.Connection, row: sqlite3.Row, uid: int) -> dict:
            "answer": row["answer"] if show else None,
            "explanation": row["explanation"] if show else None,
            "attempts": c.execute("SELECT count(*) AS n FROM attempts WHERE item_id=? AND user_id=?", (row["id"], uid)).fetchone()["n"],
-           "last": attempt_view(last) if last else None}
+           "last": attempt_view(last) if last else None,
+           # the question or its answer key changed after this person last answered: their result stays, with a label
+           "changed_since": bool(last and row["changed_after"] is not None and last["id"] <= row["changed_after"]),
+           "changed_at": row["changed_at"]}
     return out
 
 
@@ -109,6 +112,7 @@ def attempt(c: sqlite3.Connection, item_id: str, answer: str, files: list[tuple[
         _touch_session(c, row["session_id"], uid)
         return public_item(c, item_row(c, item_id), uid)
 
+    budget.check_learner(c, uid)   # written answers are marked by the AI
     stored: list[str] = []
     files = [(safe_name(n), d) for n, d in files[:5]]
     for name, data in files:
@@ -205,6 +209,27 @@ def _on_mark_failed(c: sqlite3.Connection, job: sqlite3.Row, err: str) -> None:
 jobs.handler("mark", on_failed=_on_mark_failed)(_on_mark)
 
 
+def remark(c: sqlite3.Connection, attempt_id: int) -> None:
+    """Mark a written answer again (after a learner flagged the feedback and an editor agreed)."""
+    a = c.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
+    if a is None:
+        raise Problem("That answer doesn't exist.")
+    row = item_row(c, a["item_id"])
+    if row["qtype"] not in ("short", "long"):
+        raise Problem("Only written answers are marked by the AI.")
+    title = _course_title(c, row["course_id"])
+    if row["qtype"] == "short":
+        req = prompts.mark_short(title, dict(row), a["answer"])
+    else:
+        s_title = c.execute("SELECT title FROM sessions WHERE id=?", (row["session_id"],)).fetchone()["title"]
+        files = db.loads(a["files_json"], [])
+        req = prompts.mark_long(title, s_title, {**dict(row), "rubric": db.loads(row["rubric_json"], [])}, a["answer"], bool(files))
+        req["files"] = files
+    c.execute("UPDATE attempts SET status='queued' WHERE id=?", (attempt_id,))
+    # started by the editor who agreed with the flag, so it doesn't count against the learner's allowance
+    jobs.enqueue(c, "mark", req, course_id=row["course_id"], ref=str(attempt_id), priority=jobs.PRIORITY_NOW)
+
+
 def reveal(c: sqlite3.Connection, item_id: str, uid: int = db.OWNER_ID) -> dict:
     row = item_row(c, item_id)
     c.execute("INSERT OR IGNORE INTO item_reveals(user_id, item_id, at) VALUES (?,?,?)", (uid, item_id, db.now()))
@@ -243,6 +268,7 @@ def warmup(c: sqlite3.Connection, session_id: str, uid: int, n: int = 4) -> list
     if s is None or s["seq"] == 1:
         return []
     base = ("SELECT i.* FROM items i JOIN sessions s ON s.id=i.session_id WHERE i.course_id=? AND s.seq < ? "
+            "AND i.archived=0 AND s.archived=0 "
             "AND i.qtype IN ('mcq','numeric','short') AND i.section IN ('check','practice')")
     picked: list[sqlite3.Row] = []
     seen: set[str] = set()
@@ -284,7 +310,7 @@ def warmup(c: sqlite3.Connection, session_id: str, uid: int, n: int = 4) -> list
 
 def session_progress(c: sqlite3.Connection, session_id: str, uid: int) -> dict:
     rows = c.execute("SELECT i.id, i.qtype, i.section, (SELECT score FROM attempts a WHERE a.item_id=i.id AND a.user_id=? "
-                     "AND a.status='marked' ORDER BY a.id DESC LIMIT 1) AS score FROM items i WHERE i.session_id=?",
+                     "AND a.status='marked' ORDER BY a.id DESC LIMIT 1) AS score FROM items i WHERE i.session_id=? AND i.archived=0",
                      (uid, session_id)).fetchall()
     quick = [r for r in rows if r["qtype"] != "long"]
     written = [r for r in rows if r["qtype"] == "long"]
@@ -311,7 +337,7 @@ def set_reading_mode(c: sqlite3.Connection, course_id: str, uid: int, on: bool) 
 
 def course_progress(c: sqlite3.Connection, course_id: str, uid: int) -> dict:
     ss = c.execute("SELECT s.id, s.state, p.done_at, p.started_at FROM sessions s LEFT JOIN session_progress p "
-                   "ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? ORDER BY s.seq", (uid, course_id)).fetchall()
+                   "ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? AND s.archived=0 ORDER BY s.seq", (uid, course_id)).fetchall()
     done = sum(1 for s in ss if s["done_at"])
     nxt = next((s["id"] for s in ss if not s["done_at"] and s["state"] == "ready"), None)
     per = [session_progress(c, s["id"], uid) for s in ss]
@@ -364,7 +390,8 @@ def chat_context(c: sqlite3.Connection, course_id: str, scope: str, uid: int) ->
     plan = db.loads(course["plan_json"], {}) or {}
     if scope == "course":
         lines = [plan.get("title", course["title"]), plan.get("summary", "")]
-        for s in c.execute("SELECT seq, title, topics_json FROM sessions WHERE course_id=? ORDER BY seq", (course_id,)):
+        for s in c.execute("SELECT seq, title, topics_json FROM sessions WHERE course_id=? AND archived=0 ORDER BY seq",
+                           (course_id,)):
             lines.append(f"{s['seq']}. {s['title']}: {', '.join(db.loads(s['topics_json'], []))}")
         return "\n".join(lines)
     item = c.execute("SELECT * FROM items WHERE id=? AND course_id=?", (scope, course_id)).fetchone()
@@ -396,6 +423,7 @@ def ask(c: sqlite3.Connection, course_id: str, scope: str, text: str, uid: int =
         raise Problem("Keep it under 4,000 characters.")
     if chat_pending(c, course_id, scope, uid):
         raise Problem("Wait for the answer to your last question first.")
+    budget.check_learner(c, uid)
     context = chat_context(c, course_id, scope, uid)
     history = chat_messages(c, course_id, scope, uid)[-HISTORY:]
     c.execute("INSERT INTO chat_messages(course_id, scope, role, text, created_at, user_id) VALUES (?,?,?,?,?,?)",

@@ -1,4 +1,4 @@
-import { api, can, html, raw, ago, team, toast } from "../util.js";
+import { api, can, html, raw, ago, team, toast, who } from "../util.js";
 import { icon } from "../icons.js";
 import { feedLine } from "../feed.js";
 
@@ -24,8 +24,8 @@ export default async function home(view, scope) {
     view.innerHTML = html`
       <div class="hero"><span class="iso" aria-hidden="true"></span>
         <div><div class="eyebrow">self-paced learning</div><h1>Your courses<br><span class="tone2">learn anything, at your own pace.</span></h1><p>No deadlines, no grades: just progress.</p></div>
-        <div class="row">${raw(can("author") ? html`<a class="button ghost" href="#/import">${raw(icon("upload", 15))}Import</a>
-          <a class="button" href="#/new">${raw(icon("plus", 15))}New course</a>` : "")}</div>
+        <div class="row">${raw(can("author") ? html`<a class="button ghost" href="#/import">${raw(icon("upload", 15))}Import</a>` : "")}
+          ${raw(who.user?.can_create ? html`<a class="button" href="#/new">${raw(icon("plus", 15))}New course</a>` : "")}</div>
       </div>
       ${raw(going ? html`<div class="panel continue">
         <div><div class="small muted">Continue where you left off</div><h2>${going.title}</h2>
@@ -47,7 +47,7 @@ export default async function home(view, scope) {
         </section><section class="shelf" id="feedbox" hidden></section></div>` : html`
         <div class="panel empty"><div class="big">What do you want to learn?</div>
           <p class="muted">Name any subject, pick how deep to go, and the AI writes you a course.</p>
-          ${raw(can("author") ? `<a class="button" href="#/new">${icon("plus", 15)}Start your first course</a>` : `<p class="small faint">When an author publishes a course, it shows up here.</p>`)}</div>`)}`;
+          ${raw(who.user?.can_create ? `<a class="button" href="#/new">${icon("plus", 15)}Start your first course</a>` : `<p class="small faint">When an author publishes a course, it shows up here.</p>`)}</div>`)}`;
     if (!courses.length) return;
     const others = courses.filter((c) => !c.mine);
     const tags = [...new Set(courses.flatMap((c) => c.tags))].sort();
@@ -120,7 +120,7 @@ function card(c) {
   const state = STATUS[c.status];
   return html`<div class="panel card${c.pinned ? " pinned" : ""}">
     <div class="spread"><span class="row" style="gap:6px">${raw(c.pinned ? `<span class="pill accent">${icon("pin", 11)}pinned</span>` : "")}<span class="pill">${c.depth_label}</span>${raw(c.visibility === "draft" && team()
-      ? `<span class="pill teal">draft</span>` : "")}${raw(state && c.can_edit ? html`<span class="pill teal">${state}</span>` : "")}</span>
+      ? `<span class="pill teal">${c.suggested ? "suggested" : c.own && !can("author") ? "private" : "draft"}</span>` : "")}${raw(state && c.can_edit ? html`<span class="pill teal">${state}</span>` : "")}</span>
       <span class="card-actions">${raw(actions(c))}</span></div>
     <h3><a class="stretch" href="#/course/${c.id}">${c.title}</a></h3>
     <div class="sum">${c.summary || c.subject}</div>

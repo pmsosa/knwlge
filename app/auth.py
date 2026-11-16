@@ -213,12 +213,33 @@ def require(user: dict, role: str) -> None:
         raise AuthError("forbidden", "You don't have permission to do that.", 403)
 
 
+def _suggested(course: sqlite3.Row) -> bool:
+    return "suggested_at" in course.keys() and bool(course["suggested_at"])
+
+
 def can_view(user: dict, course: sqlite3.Row) -> bool:
-    return course["visibility"] == "published" or course["author_id"] == user["id"] or at_least(user, "admin")
+    """Published courses, your own, everything for admins; authors also see learners' courses suggested for everyone."""
+    return (course["visibility"] == "published" or course["author_id"] == user["id"] or at_least(user, "admin")
+            or (at_least(user, "author") and _suggested(course)))
 
 
 def can_edit(user: dict, course: sqlite3.Row) -> bool:
-    return at_least(user, "admin") or (at_least(user, "author") and course["author_id"] == user["id"])
+    """Admins and authors edit every course they can see; anyone edits their own (learners only theirs)."""
+    return at_least(user, "author") and can_view(user, course) or course["author_id"] == user["id"]
+
+
+def owns(user: dict, course: sqlite3.Row) -> bool:
+    return course["author_id"] == user["id"]
+
+
+def can_publish_course(user: dict, course: sqlite3.Row) -> bool:
+    """Who can put a course in front of everyone (or take it back): admins, its author if they're an author, and any
+    author for a learner's course suggested for everyone. Learners suggest instead."""
+    return at_least(user, "admin") or (at_least(user, "author") and (owns(user, course) or _suggested(course)))
+
+
+def can_delete(user: dict, course: sqlite3.Row) -> bool:
+    return at_least(user, "admin") or owns(user, course)
 
 
 def check_view(user: dict, course: sqlite3.Row) -> None:
@@ -231,7 +252,7 @@ def check_view(user: dict, course: sqlite3.Row) -> None:
 def check_edit(user: dict, course: sqlite3.Row) -> None:
     check_view(user, course)
     if not can_edit(user, course):
-        raise AuthError("forbidden", "Only the course's author or an admin can change it.", 403)
+        raise AuthError("forbidden", "Only authors, admins and the course's owner can change it.", 403)
 
 
 # ---------- account management (admins, and the command line) ----------

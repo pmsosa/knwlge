@@ -13,7 +13,8 @@ See [index](index.md). Code: [app/static/](../../app/static/). Plain HTML, CSS a
 | [js/items.js](../../app/static/js/items.js) | Questions, exercises and projects: answering, feedback, reveals, editing |
 | [js/media.js](../../app/static/js/media.js), [js/widgets.js](../../app/static/js/widgets.js) | Media cards, Mermaid, the sandboxed experiment frame; the interactive widgets |
 | [js/tutor.js](../../app/static/js/tutor.js) | The tutor bubble and its chat window (`mountTutor`, `openChat`, `removeTutor`) |
-| [js/sectionmenu.js](../../app/static/js/sectionmenu.js) | The right-click section menu and its Edit / Rewrite / Add dialogs |
+| [js/sectionmenu.js](../../app/static/js/sectionmenu.js) | The right-click section menu and its Edit / Rewrite / Add dialogs, History and Flag |
+| [js/review.js](../../app/static/js/review.js) | The word diff, the review dialog (accept or discard a draft), the history dialog (restore), the flag dialog, and the course page's Changes and Flags tabs |
 | [js/theme.js](../../app/static/js/theme.js) | Applies the saved theme before first paint |
 | [js/readingmode.js](../../app/static/js/readingmode.js) | The Reading mode switch (course sidebar and session toolbar) and the list of quiz-like widgets it hides |
 | [sw.js](../../app/static/sw.js) | The service worker, served at `/sw.js` with its build stamp ([below](#installable-app)) |

@@ -30,11 +30,13 @@ words, prefer free and openly licensed sources, Markdown with LaTeX, made-up peo
 
 | Action | Function | Notes |
 |---|---|---|
-| Edit a section by hand | `editing.edit_chunk` | Title, Markdown, worked example; 50,000 characters each at most |
-| Rewrite or add with Gemini | `editing.queue_revision` → `revise` job → `_on_revise` | Prompt `prompts.revise_chunk`: the section, the session outline, the selected passage (if any) and the request; returns the whole section. Job `ref` is `session_id:chunk`; `revisions()` lists the busy chunks (the session API returns them as `revising`). Failure → a warning on the session. Audited before and after |
-| Edit or delete a question | `editing.edit_item`, delete route | Multiple-choice answers must match an option; number answers must be numbers |
-| Rewrite a whole session | `pipeline.regenerate_session` | A new `session` job with the wish; items and attempts replaced |
+| Edit a section or a question by hand | `changes.hand_edit` | Title, Markdown, worked example (50,000 characters each at most); multiple-choice answers must match an option, number answers must be numbers. Live and versioned, or a draft with review on |
+| Rewrite or add with the AI | `changes.ask_ai` → `revise` job | Prompt `prompts.revise_chunk`: the section, the session outline, the selected passage (if any) and the request; returns the whole section, as a draft to review |
+| Rewrite a question, a whole session, the plan | `changes.ask_ai` → `revise_item`, `redo_session`, `replan` jobs | Drafts; a session rewrite archives the old questions with their answers when accepted ([changes-and-flags](changes-and-flags.md)) |
+| Take a question out | delete route → `editing.remove_item` | Archived, answers kept |
+| Write a failed or unwritten session again | `pipeline.regenerate_session` | A new `session` job (for sessions that aren't ready yet) |
 | Rename, extras, publish | routes in [main.py](../../app/main.py) | Extras apply to sessions written later |
 | Export | `editing.export_zip` | Markdown per session with the exporting person's own answers and notes |
 
-Every edit is checked server-side with `editable()` (the author or an admin) and logged in the audit log.
+Every edit is checked server-side with `editable()` (admins, authors, and a course's owner) and `changes.can_publish()`,
+kept as a version, and logged in the audit log. Drafts, versions and flags: [changes-and-flags](changes-and-flags.md).

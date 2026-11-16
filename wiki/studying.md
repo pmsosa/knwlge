@@ -66,6 +66,8 @@ while another works through its exercises.
 - **Show answer** reveals the answer without trying. That's allowed; it's your course.
 - Every question you answer goes into your review queue: right answers come back after a growing gap (2 days, then
   5, then about 12...), missed ones in the very next warm-up.
+- If an author changes a question or its answer after you answered it, your result stays as it was, with a note that
+  the question changed since. Try it again if you like; nothing is marked again behind your back.
 
 ## Written work and feedback
 
@@ -109,6 +111,37 @@ exploring and finishing, never for speed or scores.
 A short message pops up when you earn one. The **Achievements** tab on each course shows what's earned and what's
 left, and your account page lists everything you've earned. In team mode they appear in the activity feed only if
 you've chosen to share (see [Administration](administration.md#the-activity-feed)).
+
+## Flag a problem
+
+Something looks wrong: a fact, a sum, an answer key, unfair feedback, a broken link? Flag it:
+
+- a **section**: right-click it (or tap **⋯** on its heading) and pick **Something wrong here?**;
+- a **question** or its answer: **Flag** under it;
+- **feedback** on your written work: **Unfair? Flag this feedback**;
+- a **reading suggestion**: the flag icon beside it.
+
+Say what looks wrong if you can. The AI takes a quick second look straight away, and the course's authors see your flag
+with its verdict. Your account page lists everything you've flagged and what happened: fixed, being fixed, or looked
+at and fine (with the author's reply). Up to 30 flags a day.
+
+## Earlier sessions
+
+If an author takes a session out of a course after you started it, it stays with you: the course page lists it under
+**Earlier sessions**, with your answers and notes. A session rewritten as a new version keeps your old answers in its
+history too.
+
+## Your own courses (team mode)
+
+If an admin lets learners make courses, **new course** appears for you too. Your courses are private: only you (and
+admins) see them, and only you change them. On a course's **Course** tab, **suggest for everyone** shows it to the
+authors, who can publish it for everyone.
+
+### Your AI allowance (team mode)
+
+An admin may give learners a monthly AI allowance. Your account page shows how much of it you've used. It covers the
+tutor, feedback on your written answers, flags, and your own courses. When it's used up, those wait until the 1st;
+quick questions, reading and your progress don't use it.
 
 ## Progress is yours
 

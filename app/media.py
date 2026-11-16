@@ -259,13 +259,14 @@ def check_item(m: dict) -> tuple[dict | None, str | None]:
     return None, f"unknown media kind {kind!r}"
 
 
-def store(c: sqlite3.Connection, course_id: str, session_id: str, chunks: list[dict], options: dict) -> list[str]:
-    """Replace a session's media with what its chunks propose. Returns notes about anything dropped."""
-    for old in c.execute("SELECT file FROM media WHERE session_id=? AND file IS NOT NULL", (session_id,)):
+def store(c: sqlite3.Connection, course_id: str, session_id: str, chunks: list[dict], options: dict, gen: int = 0) -> list[str]:
+    """Replace a session's live media with what its chunks propose (archived media of earlier versions stays).
+    Returns notes about anything dropped."""
+    for old in c.execute("SELECT file FROM media WHERE session_id=? AND archived=0 AND file IS NOT NULL", (session_id,)):
         p = _path(course_id, old["file"])
         if p and p.exists():
             p.unlink()
-    c.execute("DELETE FROM media WHERE session_id=?", (session_id,))
+    c.execute("DELETE FROM media WHERE session_id=? AND archived=0", (session_id,))
     allowed = set(allowed_kinds(options))
     notes: list[str] = []
     count = {"total": 0, "illustration": 0, "experiment": 0}
@@ -285,7 +286,7 @@ def store(c: sqlite3.Connection, course_id: str, session_id: str, chunks: list[d
             count["total"] += 1
             if k in count:
                 count[k] += 1
-            mid = f"{session_id}-m{ci + 1}{mi + 1}"
+            mid = f"{session_id}-g{gen}-m{ci + 1}{mi + 1}" if gen else f"{session_id}-m{ci + 1}{mi + 1}"
             status, file, mime = "pending", None, None
             if k in ("mermaid", "widget"):
                 status = "ready"

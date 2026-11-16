@@ -1,10 +1,13 @@
-// Right-click a part of a lesson (or select some text in it first) for a small menu: edit it by hand, have Gemini
-// rewrite it or add to it, ask the tutor about it, or copy. Shift + right-click still opens the browser's own menu.
-// Editors also get a "⋯" button on each part's heading, for touch screens.
+// Right-click a part of a lesson (or select some text in it first) for a small menu: edit it by hand, have the AI
+// rewrite it or add to it (as a draft to review), see its history, ask the tutor, flag a problem, or copy.
+// Shift + right-click still opens the browser's own menu. Each part's heading also has a "⋯" button, for touch screens.
 import { act, api, el, html, raw, toast } from "./util.js";
 import { icon } from "./icons.js";
 import { md } from "./md.js";
 import { openChat } from "./tutor.js";
+import { openFlag, openHistory } from "./review.js";
+
+const chunkTid = (s, i) => `${s.id}@${s.gen}:${i}`;
 
 /** Wire the menu onto a rendered session. `s` is the session from the API; `reload()` redraws it from the server. */
 export function sectionMenus(root, s, reload) {
@@ -48,13 +51,15 @@ function showMenu(at, block, s, reload, picked) {
   const ch = s.content.chunks[i];
   const short = picked ? `“${picked.length > 40 ? picked.slice(0, 40).trim() + "…" : picked}”` : "";
   const entries = [];
-  if (s.can_edit) {
+  if (s.can_edit && !s.archived) {
     entries.push(["edit", "Edit section", "the Markdown, by hand", "pencil"]);
-    entries.push(["rewrite", picked ? "Rewrite the selection" : "Rewrite with Gemini", "say what should change", "sparkles"]);
+    entries.push(["rewrite", picked ? "Rewrite the selection" : "Rewrite with the AI", "a draft to review", "sparkles"]);
     entries.push(["add", "Add to this section", picked ? "right after the selection" : "say what you'd like to see", "plus"]);
+    entries.push(["history", "History", "earlier versions, restore one", "history"]);
     entries.push(null);
   }
   entries.push(["ask", picked ? "Ask the tutor about this" : "Ask the tutor about this section", picked ? short : "", "message-circle-question"]);
+  if (!s.archived) entries.push(["flag", "Something wrong here?", "flag it for the authors", "flag"]);
   if (picked) entries.push(["copy", "Copy", "", "copy"]);
   const menu = el(html`<div class="ctx-menu" role="menu" aria-label="${ch.title}">
     <div class="ctx-head small faint">${ch.title}</div>
@@ -86,6 +91,8 @@ function showMenu(at, block, s, reload, picked) {
     const what = b.dataset.do;
     if (what === "edit") editDialog(s, i, ch, picked, reload);
     else if (what === "rewrite" || what === "add") reviseDialog(s, i, ch, what, picked, block, reload);
+    else if (what === "history") openHistory("chunk", chunkTid(s, i), `“${ch.title}”`, reload);
+    else if (what === "flag") openFlag("chunk", chunkTid(s, i), reload);
     else if (what === "ask") {
       openChat(s.course_id, s.id, "this session", picked || ch.title, !picked);
     } else if (what === "copy") copy(picked);
@@ -122,7 +129,7 @@ function editDialog(s, i, ch, picked, reload) {
         <textarea id="ed-ex" class="mono short">${ch.example_markdown || ""}</textarea>
       </div>
       <div class="ed-preview prose" hidden></div>
-      <div class="row modal-actions"><span class="small faint">Your learners' answers aren't touched.</span><span style="flex:1"></span>
+      <div class="row modal-actions"><span class="small faint">${s.can_publish ? "Saving makes it live; the old version stays in History." : "Review is on: this goes to the course's owner to accept."}</span><span style="flex:1"></span>
         <button type="button" class="ghost" data-close>cancel</button><button type="button" data-act="save">${raw(icon("check", 15))}save</button></div>
     </form></dialog>`);
   const ta = d.querySelector("#ed-md");
@@ -142,10 +149,10 @@ function editDialog(s, i, ch, picked, reload) {
       ? html`<details class="example" open><summary>Worked example</summary><div class="prose">${raw(md(d.querySelector("#ed-ex").value))}</div></details>` : "");
   }));
   d.querySelector('[data-act="save"]').addEventListener("click", (e) => act(e.currentTarget, async () => {
-    await api(`/api/sessions/${s.id}/chunks/${i}`, { method: "PUT", json: {
+    const r = await api(`/api/sessions/${s.id}/chunks/${i}`, { method: "PUT", json: { gen: s.gen,
       title: d.querySelector("#ed-title").value, markdown: ta.value, example_markdown: d.querySelector("#ed-ex").value } });
     d.close();
-    toast("Saved.");
+    toast(r.applied ? "Saved." : "Sent for review: the course's owner or an admin accepts it.");
     await reload();
   }));
 }
@@ -156,12 +163,12 @@ function scrollToCaret(ta) {
 }
 
 const COPY = {
-  rewrite: { title: "Rewrite", tone: "with Gemini.", label: "What should change?",
+  rewrite: { title: "Rewrite", tone: "with the AI.", label: "What should change?",
     hint: "e.g. simpler words, a sports analogy, shorter, more on why it works, fix the second paragraph",
-    go: "rewrite", toast: "Rewriting this section. It'll swap in by itself in a minute." },
+    go: "rewrite", toast: "The AI is drafting it. It'll be here to review in a minute." },
   add: { title: "Add", tone: "to this section.", label: "What would you like to add or see here?",
     hint: "e.g. a table comparing the three, a real-world example, a short history, a common mistake to watch for",
-    go: "add it", toast: "Adding to this section. It'll swap in by itself in a minute." },
+    go: "add it", toast: "The AI is drafting it. It'll be here to review in a minute." },
 };
 
 function reviseDialog(s, i, ch, mode, picked, block, reload) {
@@ -174,7 +181,8 @@ function reviseDialog(s, i, ch, mode, picked, block, reload) {
         <blockquote class="picked">${picked}</blockquote></div>` : "")}
       <div><label class="field" for="rv-wish">${t.label}</label>
         <textarea id="rv-wish" required placeholder="${t.hint}"></textarea></div>
-      <div class="row modal-actions"><span class="small faint">Uses a Gemini call. Ctrl+Enter sends.</span><span style="flex:1"></span>
+      ${raw(s.can_publish ? `<label class="row small" style="gap:6px"><input type="checkbox" id="rv-now"> Publish it straight away, without reviewing</label>` : "")}
+      <div class="row modal-actions"><span class="small faint">Comes back as a draft to accept or discard. Ctrl+Enter sends.</span><span style="flex:1"></span>
         <button type="button" class="ghost" data-close>cancel</button><button type="submit">${raw(icon(mode === "add" ? "plus" : "sparkles", 15))}${t.go}</button></div>
     </form></dialog>`);
   const ta = d.querySelector("#rv-wish");
@@ -183,7 +191,8 @@ function reviseDialog(s, i, ch, mode, picked, block, reload) {
   d.querySelector("form").addEventListener("submit", (e) => {
     e.preventDefault();
     act(d.querySelector('button[type="submit"]'), async () => {
-      await api(`/api/sessions/${s.id}/chunks/${i}/revise`, { method: "POST", json: { mode, wish: ta.value, focus: picked } });
+      await api(`/api/sessions/${s.id}/chunks/${i}/revise`, { method: "POST", json: { mode, wish: ta.value, focus: picked, gen: s.gen,
+        publish_now: !!d.querySelector("#rv-now")?.checked } });
       d.close();
       toast(t.toast);
       await reload();

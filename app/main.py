@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (achievements, activity, audit, auth, budget, dashboard, db, editing, gemini, jobs, learning, library, media, package, pipeline,
+from . import (achievements, activity, audit, auth, budget, changes, dashboard, db, editing, flags, gemini, jobs, learning, library, media, package, pipeline,
                pricing, providers, verify)
 from .pipeline import Problem
 from .tiers import KIND_LABEL, TIERS, public as tiers_public
@@ -185,6 +185,7 @@ def whoami(request: Request) -> dict:
                 "setup_needed": auth.mode() == "team" and auth.active_admins(c) == 0, "user": None}
         try:
             info["user"] = auth.current(c, request.cookies.get(auth.COOKIE), allow_must_change=True)
+            info["user"]["can_create"] = can_create(c, info["user"])
         except auth.AuthError:
             pass
         return info
@@ -454,6 +455,8 @@ def get_settings(user: Me) -> dict:
                           for k, v in providers.KINDS.items() if k != "gemini"},
                 "defaults": pricing.DEFAULT_MODELS, "known_models": pricing.KNOWN_MODELS,
                 "budget_monthly_usd": budget.cap(c), "mode": auth.mode(),
+                "review_required": db.get_setting(c, "review_required") == "1",
+                "learner_courses": db.get_setting(c, "learner_courses") == "1", "learner_cap_usd": budget.learner_cap(c),
                 "personal_password": auth.mode() == "personal" and bool(auth.owner(c)["password_hash"])}
 
 
@@ -463,6 +466,10 @@ class SettingsIn(BaseModel):
     models: dict[str, str] | None = None
     budget_monthly_usd: float | None = None
     clear_budget: bool = False
+    review_required: bool | None = None
+    learner_courses: bool | None = None
+    learner_cap_usd: float | None = None
+    clear_learner_cap: bool = False
 
 
 @app.put("/api/settings")
@@ -499,6 +506,20 @@ def put_settings(body: SettingsIn, user: Me) -> dict:
                 raise Problem("Pick a monthly budget between $0 and $100,000, or clear it.")
             db.set_setting(c, "budget_monthly_usd", str(body.budget_monthly_usd) if body.budget_monthly_usd > 0 else None)
             audit.log(c, "settings.budget", "setting", "budget", {"monthly_usd": body.budget_monthly_usd or None})
+        for key, val in (("review_required", body.review_required), ("learner_courses", body.learner_courses)):
+            if val is not None:
+                if auth.mode() != "team":
+                    raise Problem("That's for team mode.")
+                db.set_setting(c, key, "1" if val else None)
+                audit.log(c, f"settings.{key}", "setting", key, {"on": val})
+        if body.clear_learner_cap:
+            db.set_setting(c, "learner_cap_usd", None)
+            audit.log(c, "settings.learner_cap", "setting", "learner_cap_usd", {"monthly_usd": None})
+        elif body.learner_cap_usd is not None:
+            if not 0 < body.learner_cap_usd <= 10000:
+                raise Problem("Pick a monthly limit per learner between $0 and $10,000, or clear it.")
+            db.set_setting(c, "learner_cap_usd", str(body.learner_cap_usd))
+            audit.log(c, "settings.learner_cap", "setting", "learner_cap_usd", {"monthly_usd": body.learner_cap_usd})
         jobs.resume_waiting(c)  # a new key, model or budget may unblock paused work
     return get_settings(user)
 
@@ -642,6 +663,11 @@ def resume(user: Me) -> dict:
 
 # ---------- courses ----------
 
+class OnOff(BaseModel):
+    on: bool
+
+
+
 class NewCourse(BaseModel):
     subject: str
     notes: str = ""
@@ -649,10 +675,20 @@ class NewCourse(BaseModel):
     options: dict[str, bool] | None = None
 
 
+def learner_courses_on(c) -> bool:
+    return auth.mode() == "team" and db.get_setting(c, "learner_courses") == "1"
+
+
+def can_create(c, user: dict) -> bool:
+    return auth.at_least(user, "author") or learner_courses_on(c)
+
+
 @app.post("/api/courses")
 def new_course(body: NewCourse, user: Me) -> dict:
-    auth.require(user, "author")
     with db.tx() as c:
+        if not can_create(c, user):
+            raise auth.AuthError("forbidden", "Learners can't make courses here. An admin can switch that on.", 403)
+        budget.check_learner(c, user["id"])
         cid = pipeline.create(c, body.subject, body.notes, body.depth, body.options)
         audit.log(c, "course.created", "course", cid, {"subject": body.subject[:200], "depth": body.depth})
         return {"id": cid}
@@ -688,12 +724,29 @@ def set_visibility(course_id: str, body: VisibilityIn, user: Me) -> dict:
     """Publish a course to everyone, or take it back to a draft (people's progress is kept)."""
     team_only()
     with db.tx() as c:
-        editable(c, user, course_id)
+        row = editable(c, user, course_id)
+        if not auth.can_publish_course(user, row):
+            raise auth.AuthError("forbidden", "Suggest it for everyone instead: an author or admin publishes it.", 403)
         vis = "published" if body.published else "draft"
         c.execute("UPDATE courses SET visibility=?, published_at=CASE WHEN ?='published' THEN coalesce(published_at, ?) "
                   "ELSE published_at END, updated_at=? WHERE id=?", (vis, vis, db.now(), db.now(), course_id))
         audit.log(c, "course.published" if body.published else "course.unpublished", "course", course_id)
         return {"visibility": vis}
+
+
+@app.post("/api/courses/{course_id}/suggest")
+def suggest(course_id: str, body: OnOff, user: Me) -> dict:
+    """A learner's own course, suggested for everyone (an author or admin then publishes it)."""
+    team_only()
+    with db.tx() as c:
+        row = viewable(c, user, course_id)
+        if not auth.owns(user, row):
+            raise auth.AuthError("forbidden", "Only the course's owner can suggest it.", 403)
+        if row["visibility"] == "published":
+            raise Problem("It's already published.")
+        c.execute("UPDATE courses SET suggested_at=? WHERE id=?", (db.now() if body.on else None, course_id))
+        audit.log(c, "course.suggested" if body.on else "course.unsuggested", "course", course_id)
+        return {"suggested": body.on}
 
 
 def _author_name(c, uid: int) -> str:
@@ -720,6 +773,7 @@ def list_courses(user: Me) -> list[dict]:
                         "mine": library.is_mine(prefs, progress, building),
                         "created_at": r["created_at"], "last_opened_at": r["my_open"], "visibility": r["visibility"],
                         "author": _author_name(c, r["author_id"]), "can_edit": auth.can_edit(user, r),
+                        "own": auth.owns(user, r), "suggested": bool(r["suggested_at"]) and r["visibility"] != "published",
                         "reading_mode": learning.reading_mode(c, r["id"], user["id"])})
         return out
 
@@ -732,7 +786,8 @@ def get_course(course_id: str, user: Me) -> dict:
         learning.opened(c, course_id, user["id"])
         sessions = []
         for s in c.execute("SELECT s.*, p.done_at AS my_done, p.started_at AS my_started FROM sessions s LEFT JOIN session_progress p "
-                           "ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? ORDER BY s.seq", (user["id"], course_id)).fetchall():
+                           "ON p.session_id=s.id AND p.user_id=? WHERE s.course_id=? AND s.archived=0 ORDER BY s.seq",
+                           (user["id"], course_id)).fetchall():
             sessions.append({"id": s["id"], "seq": s["seq"], "kind": s["kind"], "kind_label": KIND_LABEL[s["kind"]],
                              "title": s["title"], "topics": db.loads(s["topics_json"], []),
                              "objectives": db.loads(s["objectives_json"], []), "minutes": s["minutes"], "state": s["state"],
@@ -763,6 +818,18 @@ def get_course(course_id: str, user: Me) -> dict:
             "visibility": r["visibility"], "author": _author_name(c, r["author_id"]), "can_edit": mine,
             "published_at": r["published_at"], "updated_at": r["updated_at"],
             "tags": library.tags_of(r), **library.prefs(c, course_id, user["id"]),
+            # the byline, and what this person may do
+            "version": r["version"], "updated_by": _author_name(c, r["updated_by"]) if r["updated_by"] else "",
+            "own": auth.owns(user, r), "can_publish": changes.can_publish(c, user, r), "review_on": changes.review_on(c),
+            "can_publish_course": auth.can_publish_course(user, r), "can_delete": auth.can_delete(user, r),
+            "suggested": bool(r["suggested_at"]),
+            "earlier": [{"id": e["id"], "title": e["title"], "kind_label": KIND_LABEL[e["kind"]], "done": bool(e["my_done"])}
+                        for e in c.execute("SELECT s.*, p.done_at AS my_done FROM sessions s JOIN session_progress p ON p.session_id=s.id "
+                                           "AND p.user_id=? WHERE s.course_id=? AND s.archived=1 ORDER BY s.seq",
+                                           (user["id"], course_id))],
+            "open_changes": c.execute("SELECT count(*) AS n FROM changes WHERE course_id=? AND status IN ('working','pending')",
+                                      (course_id,)).fetchone()["n"] if mine else 0,
+            "open_flags": flags.open_count(c, course_id) if mine else 0,
             "achievements": achievements.listing(c, course_id, user["id"]),
             "themed_achievements": achievements.themed(c, course_id) if mine else [],
         }
@@ -794,10 +861,11 @@ def skip(course_id: str, user: Me) -> dict:
 
 class Text(BaseModel):
     text: str = ""
+    publish_now: bool = False
 
 
 @app.post("/api/courses/{course_id}/changes")
-def changes(course_id: str, body: Text, user: Me) -> dict:
+def plan_changes(course_id: str, body: Text, user: Me) -> dict:
     with db.tx() as c:
         editable(c, user, course_id)
         pipeline.request_changes(c, course_id, body.text)
@@ -825,6 +893,8 @@ def retry(course_id: str, user: Me) -> dict:
 def delete_course(course_id: str, user: Me) -> dict:
     with db.tx() as c:
         row = editable(c, user, course_id)
+        if not auth.can_delete(user, row):
+            raise auth.AuthError("forbidden", "Only the course's owner or an admin can delete it.", 403)
         pipeline.delete(c, course_id)
         audit.log(c, "course.deleted", "course", course_id, {"title": row["title"]})
     return {"ok": True}
@@ -851,10 +921,6 @@ def export(course_id: str, user: Me) -> Response:
         audit.log(c, "course.exported", "course", course_id, {"format": "markdown"})
     safe = "".join(ch if ch.isalnum() or ch in " -_.()" else "-" for ch in name)
     return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe}"'})
-
-
-class OnOff(BaseModel):
-    on: bool
 
 
 class TagsIn(BaseModel):
@@ -984,9 +1050,10 @@ def print_course(course_id: str, user: Me, answers: int = 0) -> dict:
         r = viewable(c, user, course_id)
         mine = auth.can_edit(user, r)
         sessions = []
-        for s in c.execute("SELECT * FROM sessions WHERE course_id=? AND state='ready' ORDER BY seq", (course_id,)).fetchall():
+        for s in c.execute("SELECT * FROM sessions WHERE course_id=? AND state='ready' AND archived=0 ORDER BY seq",
+                           (course_id,)).fetchall():
             items = []
-            for i in c.execute("SELECT * FROM items WHERE session_id=? ORDER BY seq", (s["id"],)).fetchall():
+            for i in c.execute("SELECT * FROM items WHERE session_id=? AND archived=0 ORDER BY seq", (s["id"],)).fetchall():
                 item = {"id": i["id"], "section": i["section"], "chunk": i["chunk"], "qtype": i["qtype"], "title": i["title"],
                         "prompt": i["prompt"], "options": db.loads(i["options_json"], [])}
                 if answers and (mine or learning.revealed(c, i["id"], user["id"]) or learning.latest_attempt(c, i["id"], user["id"])):
@@ -995,7 +1062,7 @@ def print_course(course_id: str, user: Me, answers: int = 0) -> dict:
             sessions.append({"id": s["id"], "seq": s["seq"], "kind": s["kind"], "kind_label": KIND_LABEL[s["kind"]], "title": s["title"],
                              "minutes": s["minutes"], "content": db.loads(s["content_json"], {}), "items": items,
                              "media": [media.public(m) for m in c.execute(
-                                 "SELECT * FROM media WHERE session_id=? ORDER BY chunk, seq", (s["id"],))]})
+                                 "SELECT * FROM media WHERE session_id=? AND archived=0 ORDER BY chunk, seq", (s["id"],))]})
         plan = db.loads(r["plan_json"], {}) or {}
         return {"id": r["id"], "title": r["title"], "summary": r["summary"], "depth_label": TIERS[r["depth"]]["label"],
                 "prerequisites": plan.get("prerequisites", []), "author": _author_name(c, r["author_id"]), "sessions": sessions,
@@ -1071,10 +1138,10 @@ def get_session(session_id: str, user: Me) -> dict:
         learning.opened(c, s["course_id"], uid)
         p = learning.progress_of(c, session_id, uid)
         reading_on = learning.reading_mode(c, s["course_id"], uid)
-        nav = c.execute("SELECT id, seq, title, state FROM sessions WHERE course_id=? AND seq IN (?, ?) ORDER BY seq",
-                        (s["course_id"], s["seq"] - 1, s["seq"] + 1)).fetchall()
-        items = [learning.public_item(c, r, uid) for r in c.execute("SELECT * FROM items WHERE session_id=? ORDER BY seq",
-                                                                    (session_id,)).fetchall()]
+        nav = c.execute("SELECT id, seq, title, state FROM sessions WHERE course_id=? AND archived=0 AND seq IN (?, ?) ORDER BY seq",
+                        (s["course_id"], s["seq"] - 1, s["seq"] + 1)).fetchall() if not s["archived"] else []
+        items = [learning.public_item(c, r, uid) for r in c.execute("SELECT * FROM items WHERE session_id=? AND archived=0 "
+                                                                    "ORDER BY seq", (session_id,)).fetchall()]
         reading = [dict(x) for x in c.execute("SELECT id, kind, title, creator, url, level, minutes, why, free FROM reading "
                                               "WHERE session_id=? AND status='verified' ORDER BY id", (session_id,))]
         ready = s["state"] == "ready"
@@ -1091,17 +1158,21 @@ def get_session(session_id: str, user: Me) -> dict:
             "done": bool(p and p["done_at"]), "summary_note": p["summary_note"] if p else "", "note": p["note"] if p else "",
             "prev": next((dict(n) for n in nav if n["seq"] < s["seq"]), None),
             "next": next((dict(n) for n in nav if n["seq"] > s["seq"]), None),
-            "total": c.execute("SELECT count(*) AS n FROM sessions WHERE course_id=?", (s["course_id"],)).fetchone()["n"],
+            "total": c.execute("SELECT count(*) AS n FROM sessions WHERE course_id=? AND archived=0", (s["course_id"],)).fetchone()["n"],
             "jobs": [j for j in jobs.pending(c, s["course_id"]) if j["ref"] == session_id] if mine else [],
-            "media": [media.public(m) for m in c.execute("SELECT * FROM media WHERE session_id=? ORDER BY chunk, seq",
+            "media": [media.public(m) for m in c.execute("SELECT * FROM media WHERE session_id=? AND archived=0 ORDER BY chunk, seq",
                                                            (session_id,))] if ready else [],
             "outline": [{"id": o["id"], "seq": o["seq"], "title": o["title"], "kind": o["kind"], "state": o["state"],
                          "done": bool(o["done_at"])}
                         for o in c.execute("SELECT s.id, s.seq, s.title, s.kind, s.state, p.done_at FROM sessions s "
                                            "LEFT JOIN session_progress p ON p.session_id=s.id AND p.user_id=? "
-                                           "WHERE s.course_id=? ORDER BY s.seq", (uid, s["course_id"]))],
-            "can_edit": mine,
-            "revising": editing.revisions(c, session_id) if mine else [],
+                                           "WHERE s.course_id=? AND s.archived=0 ORDER BY s.seq", (uid, s["course_id"]))],
+            "can_edit": mine, "can_publish": changes.can_publish(c, user, course) if mine else False,
+            "gen": s["gen"], "archived": bool(s["archived"]),
+            "changes": changes.open_for_session(c, session_id, user) if mine else [],
+            "my_flags": [dict(target=f["target"], target_id=f["target_id"], status=f["status"]) for f in c.execute(
+                "SELECT target, target_id, status FROM flags WHERE user_id=? AND course_id=? AND status IN ('checking','open','fixing')",
+                (uid, s["course_id"]))],
         }
 
 
@@ -1153,9 +1224,15 @@ def course_reading(course_id: str, body: OnOff, user: Me) -> dict:
 
 @app.post("/api/sessions/{session_id}/regenerate")
 def regenerate(session_id: str, body: Text, user: Me) -> dict:
+    """A written session: a new version as a draft to review. One that failed or isn't written yet: write it again."""
     with db.tx() as c:
         cid = _course_of(c, "sessions", session_id)
         editable(c, user, cid)
+        s = c.execute("SELECT state FROM sessions WHERE id=?", (session_id,)).fetchone()
+        if s["state"] == "ready":
+            change = changes.ask_ai(c, user, "session", session_id, body.text.strip() or "Write a fresh version of this session.",
+                                    publish_now=body.publish_now)
+            return {"ok": True, "change": change}
         pipeline.regenerate_session(c, session_id, body.text)
         audit.log(c, "session.regenerated", "session", session_id, {"course": cid, "wish": body.text[:1000]})
     return {"ok": True}
@@ -1165,37 +1242,173 @@ class ChunkIn(BaseModel):
     title: str
     markdown: str
     example_markdown: str = ""
+    gen: int | None = None
+    why: str = ""
+
+
+def _chunk_tid(c, session_id: str, index: int, gen: int | None) -> str:
+    s = c.execute("SELECT gen FROM sessions WHERE id=?", (session_id,)).fetchone()
+    if s is None:
+        raise Problem("That session doesn't exist.")
+    if gen is not None and gen != s["gen"]:
+        raise Problem("This session was rewritten meanwhile. Reload it to edit the new version.")
+    return changes.chunk_id(session_id, s["gen"], index)
 
 
 @app.put("/api/sessions/{session_id}/chunks/{index}")
 def edit_chunk(session_id: str, index: int, body: ChunkIn, user: Me) -> dict:
+    """A hand edit: live at once, or a draft for review when review is on and this isn't your course."""
     with db.tx() as c:
-        cid = _course_of(c, "sessions", session_id)
-        editable(c, user, cid)
-        before = (db.loads(c.execute("SELECT content_json FROM sessions WHERE id=?", (session_id,)).fetchone()["content_json"], {})
-                  or {}).get("chunks", [])
-        editing.edit_chunk(c, session_id, index, body.title, body.markdown, body.example_markdown)
-        audit.log(c, "session.chunk_edited", "session", session_id,
-                  {"course": cid, "chunk": index, "before": before[index] if 0 <= index < len(before) else None,
-                   "after": {"title": body.title, "markdown": body.markdown, "example_markdown": body.example_markdown}})
-    return {"ok": True}
+        return changes.hand_edit(c, user, "chunk", _chunk_tid(c, session_id, index, body.gen),
+                                 {"title": body.title, "markdown": body.markdown, "example_markdown": body.example_markdown},
+                                 body.why.strip()[:300])
 
 
 class ReviseIn(BaseModel):
-    mode: str
+    mode: str = "rewrite"
     wish: str
     focus: str = ""
+    gen: int | None = None
+    publish_now: bool = False
 
 
 @app.post("/api/sessions/{session_id}/chunks/{index}/revise")
 def revise_chunk(session_id: str, index: int, body: ReviseIn, user: Me) -> dict:
-    """Ask Gemini to rewrite one part of a lesson, or to add something to it. The change lands when the job is done."""
+    """Ask the AI to rewrite one part of a lesson, or to add something to it. It comes back as a draft to review."""
     with db.tx() as c:
-        cid = _course_of(c, "sessions", session_id)
-        editable(c, user, cid)
-        editing.queue_revision(c, session_id, index, body.mode, body.wish, body.focus)
-        audit.log(c, "session.chunk_revise_asked", "session", session_id,
-                  {"course": cid, "chunk": index, "mode": body.mode, "wish": body.wish[:1000]})
+        change = changes.ask_ai(c, user, "chunk", _chunk_tid(c, session_id, index, body.gen), body.wish, mode=body.mode,
+                                focus=body.focus, publish_now=body.publish_now)
+    return {"ok": True, "change": change}
+
+
+# ---------- drafts, review and versions ----------
+
+class WishIn(BaseModel):
+    wish: str
+    publish_now: bool = False
+
+
+@app.post("/api/items/{item_id}/revise")
+def revise_item(item_id: str, body: WishIn, user: Me) -> dict:
+    with db.tx() as c:
+        return {"change": changes.ask_ai(c, user, "item", item_id, body.wish, publish_now=body.publish_now)}
+
+
+@app.post("/api/courses/{course_id}/replan")
+def replan(course_id: str, body: WishIn, user: Me) -> dict:
+    """Ask the AI to change the plan of a written course (rename, move, add or remove sessions). A draft to review."""
+    with db.tx() as c:
+        return {"change": changes.ask_ai(c, user, "plan", course_id, body.wish, publish_now=body.publish_now)}
+
+
+@app.get("/api/courses/{course_id}/changes")
+def course_changes(course_id: str, user: Me, all: int = 0) -> dict:
+    with db.tx() as c:
+        r = editable(c, user, course_id)
+        return {"changes": changes.listing(c, course_id, user, open_only=not all), "can_publish": changes.can_publish(c, user, r),
+                "review_on": changes.review_on(c), "history": changes.course_history(c, course_id) if all else []}
+
+
+@app.get("/api/changes/{change_id}")
+def get_change(change_id: int, user: Me) -> dict:
+    with db.tx() as c:
+        ch = changes.change_row(c, change_id)
+        r = editable(c, user, ch["course_id"])
+        return {**changes.view(c, ch, user), "can_publish": changes.can_publish(c, user, r), "course_id": r["id"]}
+
+
+class AcceptIn(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/changes/{change_id}/accept")
+def accept_change(change_id: int, body: AcceptIn, user: Me) -> dict:
+    with db.tx() as c:
+        return changes.accept(c, user, change_id, body.force)
+
+
+@app.post("/api/changes/{change_id}/discard")
+def discard_change(change_id: int, user: Me) -> dict:
+    with db.tx() as c:
+        changes.discard(c, user, change_id)
+    return {"ok": True}
+
+
+@app.get("/api/history")
+def get_history(target: str, id: str, user: Me) -> dict:
+    """Every version of a part, question, session or plan, newest first."""
+    if target not in changes.TARGETS:
+        raise Problem("Unknown kind of history.")
+    with db.tx() as c:
+        r = editable(c, user, changes.course_of(c, target, id))
+        return {"versions": changes.history(c, target, id), "can_publish": changes.can_publish(c, user, r)}
+
+
+@app.post("/api/versions/{version_id}/restore")
+def restore_version(version_id: int, user: Me) -> dict:
+    with db.tx() as c:
+        return changes.restore(c, user, version_id)
+
+
+# ---------- flags ----------
+
+class FlagIn(BaseModel):
+    target: str
+    target_id: str
+    note: str = ""
+
+
+@app.post("/api/flags")
+def new_flag(body: FlagIn, user: Me) -> dict:
+    with db.tx() as c:
+        return {"id": flags.create(c, user, body.target, body.target_id, body.note)}
+
+
+@app.get("/api/courses/{course_id}/flags")
+def course_flags(course_id: str, user: Me, all: int = 0) -> dict:
+    with db.tx() as c:
+        editable(c, user, course_id)
+        return {"flags": flags.for_course(c, course_id, bool(all))}
+
+
+@app.get("/api/me/allowance")
+def my_allowance(user: Me) -> dict:
+    """A learner's monthly AI allowance and what they've used (team mode); nothing for anyone else."""
+    with db.tx() as c:
+        cap = budget.learner_cap(c)
+        if auth.mode() != "team" or user["role"] != "learner" or cap is None:
+            return {"cap": None}
+        return {"cap": cap, "used": round(budget.learner_spend(c, user["id"]), 4)}
+
+
+@app.get("/api/me/flags")
+def my_flags(user: Me) -> dict:
+    with db.tx() as c:
+        return {"flags": flags.mine(c, user["id"])}
+
+
+class FlagAction(BaseModel):
+    reply: str = ""
+    wish: str = ""
+
+
+@app.post("/api/flags/{flag_id}/dismiss")
+def dismiss_flag(flag_id: int, body: FlagAction, user: Me) -> dict:
+    with db.tx() as c:
+        flags.dismiss(c, user, flag_id, body.reply)
+    return {"ok": True}
+
+
+@app.post("/api/flags/{flag_id}/fix")
+def fix_flag(flag_id: int, body: FlagAction, user: Me) -> dict:
+    with db.tx() as c:
+        return flags.fix(c, user, flag_id, body.wish)
+
+
+@app.post("/api/flags/{flag_id}/fixed")
+def flag_fixed_by_hand(flag_id: int, body: FlagAction, user: Me) -> dict:
+    with db.tx() as c:
+        flags.fixed_by_hand(c, user, flag_id, body.reply)
     return {"ok": True}
 
 
@@ -1260,6 +1473,9 @@ class ItemIn(BaseModel):
     options: list[str] = []
     answer: str = ""
     explanation: str = ""
+    title: str | None = None
+    rubric: list[dict] | None = None
+    why: str = ""
 
 
 @app.get("/api/items/{item_id}/full")
@@ -1274,25 +1490,21 @@ def get_item_full(item_id: str, user: Me) -> dict:
 @app.put("/api/items/{item_id}")
 def edit_item(item_id: str, body: ItemIn, user: Me) -> dict:
     with db.tx() as c:
-        cid = _course_of(c, "items", item_id)
-        editable(c, user, cid)
-        old = learning.item_row(c, item_id)
-        editing.edit_item(c, item_id, body.prompt, body.options, body.answer, body.explanation)
-        audit.log(c, "item.edited", "item", item_id, {
-            "course": cid,
-            "before": {"prompt": old["prompt"], "options": db.loads(old["options_json"], []), "answer": old["answer"],
-                       "explanation": old["explanation"]},
-            "after": body.model_dump()})
-        return learning.public_item(c, learning.item_row(c, item_id), user["id"])
+        out = changes.hand_edit(c, user, "item", item_id, body.model_dump(), body.why.strip()[:300])
+        return {**out, **learning.public_item(c, learning.item_row(c, item_id), user["id"])}
 
 
 @app.delete("/api/items/{item_id}")
 def delete_item(item_id: str, user: Me) -> dict:
+    """Take a question out (archived with the answers people gave)."""
     with db.tx() as c:
         cid = _course_of(c, "items", item_id)
-        editable(c, user, cid)
+        row = editable(c, user, cid)
+        if not changes.can_publish(c, user, row):
+            raise Problem("With review switched on, the course's owner or an admin removes questions.")
         old = learning.item_row(c, item_id)
-        editing.delete_item(c, item_id)
+        editing.remove_item(c, item_id)
+        c.execute("UPDATE courses SET version=version+1, updated_at=?, updated_by=? WHERE id=?", (db.now(), user["id"], cid))
         audit.log(c, "item.deleted", "item", item_id, {"course": cid, "prompt": old["prompt"], "answer": old["answer"]})
     return {"ok": True}
 
