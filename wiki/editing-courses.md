@@ -153,6 +153,19 @@ The **Course** tab:
   achievements**. People keep what they've already earned.
 - **Share or keep a copy**: see below.
 - **Delete this course** (its owner or an admin): removes it and everything in it, for everyone. It asks first.
+- **What it costs**: the course's owner and admins see its AI spend so far, this month and in all, next to its
+  subject and depth.
+
+## Recommending a course (team mode)
+
+<img src="images/recommend.png" alt="Recommend The Physics of Music: everyone, or people picked from a list, with an optional note" width="100%">
+
+On a published course, authors and admins have **recommend** under the title. Pick **Everyone** (everyone who signs
+in, now and later) or tick people, add a note if you like, and press **Recommend**. It shows on their home page under
+**Recommended for you** until they start the course or say not now. There are no deadlines and nothing to track:
+the dashboard already shows who's taking what. The same dialog lists who it's recommended to; **take back** removes one
+(yours, or anyone's if you're an admin). Recommending the same person again replaces the older one and shows it again
+even if they'd said not now.
 
 ## Printing and sharing
 

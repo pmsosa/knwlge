@@ -4,7 +4,7 @@ See [index](index.md). Schema and upgrades: [app/db.py](../../app/db.py). `SCHEM
 
 | Table | Holds |
 |---|---|
-| `settings` | Key-value settings: the Gemini key and model list, the per-role routes (`route_<role>`), the old per-tier models, budget cap, `feed_off`, `review_required`, `learner_courses`, `learner_cap_usd` |
+| `settings` | Key-value settings: the Gemini key and model list, the per-role routes (`route_<role>`), the old per-tier models, budget cap, `feed_off`, `review_required`, `learner_courses`, `learner_cap_usd`, `welcome_text` and `upload_note` (unset: the built-in words in `texts.py`) |
 | `courses` | Subject, notes, depth, status (`questions` → `answering` → `planning` → `review` → `building` → `ready`), plan JSON, answers, options (extras), `tags_json`, `author_id`, `visibility` (`draft`/`published`), `published_at`, `version`, `updated_by`, `suggested_at` (a learner's course, suggested for everyone) |
 | `sessions` | One per plan slot: kind, minutes, title, topics, objectives, `state` (`pending`/`writing`/`checking`/`ready`/`failed`), `content_json` (goal, hook, chunks with Markdown and worked examples, wrap-up), warnings, `gen` (which rewrite is live), `archived` (taken out of the plan) |
 | `items` | Questions, exercises and project options: section (`check`, `practice`, `exercise`, `project`), chunk, type, options, answer, explanation, tolerance, rubric, `archived` (an earlier version of its session, or taken out), `changed_at` and `changed_after` (the question or key changed: earlier answers get a label) |
@@ -26,7 +26,9 @@ See [index](index.md). Schema and upgrades: [app/db.py](../../app/db.py). `SCHEM
 | `providers` | AI providers besides the built-in Gemini: kind, label, base URL, key (server-side only), model list with optional prices, whether it searches and its search price, last test ([providers](providers.md)) |
 | `achievements`, `user_achievements` | Course-themed achievements (title, description, rule, slot) and who earned what, built-in ones included ([library-and-people](library-and-people.md)) |
 | `activity` | The opt-in feed: who, what (`session_done`, `course_done`, `achievement`), course, when |
-| `users`, `login_sessions` | Accounts and sign-ins ([auth](auth.md)) |
+| `recommendations` | A published course recommended to a person (`to_user`) or everyone (NULL), by whom, with a note ([library-and-people](library-and-people.md#recommendations)) |
+| `rec_dismissed` | Per person and course: when they said "not now" (hides recommendations made before it) |
+| `users`, `login_sessions` | Accounts and sign-ins ([auth](auth.md)); `prefs_json` holds `share_activity` and `welcomed_at` |
 | `audit_log` | Who did what, when, with details as JSON ([auth](auth.md#audit-log)) |
 
 ## Ids and files
@@ -43,4 +45,5 @@ upgrade (team edition) creates the owner account (id 1), adds `user_id` columns,
 `sessions` into `session_progress` and `course_opens`, and rebuilds `review_queue` with its new key. The v3 → v4 upgrade (v0.3) adds the
 `providers`, `activity`, `achievements` and `user_achievements` tables and the `courses.tags_json`, `course_prefs.pinned`,
 `course_prefs.shelf` and `llm_calls.provider` columns; nothing is moved. The v4 → v5 upgrade (v0.4) adds the `versions`,
-`changes` and `flags` tables and the archive, generation, version and suggestion columns above; nothing is moved. Each upgrade is idempotent, and a v0.1.0 database is kept as a test fixture ([tests/fixtures/schema_v2.sql](../../tests/fixtures/schema_v2.sql)).
+`changes` and `flags` tables and the archive, generation, version and suggestion columns above; nothing is moved. The v5 → v6 upgrade (v0.5) adds
+the `recommendations` and `rec_dismissed` tables. Each upgrade is idempotent, and a v0.1.0 database is kept as a test fixture ([tests/fixtures/schema_v2.sql](../../tests/fixtures/schema_v2.sql)).

@@ -1,7 +1,8 @@
 # The library and people
 
 See [index](index.md). Code: [app/library.py](../../app/library.py), [app/achievements.py](../../app/achievements.py),
-[app/activity.py](../../app/activity.py), [app/dashboard.py](../../app/dashboard.py).
+[app/activity.py](../../app/activity.py), [app/dashboard.py](../../app/dashboard.py), [app/recommend.py](../../app/recommend.py),
+[app/texts.py](../../app/texts.py).
 
 ## Tags and shelves
 
@@ -14,6 +15,30 @@ See [index](index.md). Code: [app/library.py](../../app/library.py), [app/achiev
   keeps progress and unpins. `PUT /api/courses/{id}/shelf` takes `{pinned}` and/or `{shelf: "mine"|"aside"|"auto"}`.
 - `GET /api/courses` returns `tags`, `pinned`, `shelf` and `mine` per course; the home page splits on `mine`, pinned
   first, then by last opened.
+
+## Recommendations
+
+Team mode, authors and admins, published courses only. `POST /api/courses/{id}/recommendations` takes
+`{everyone, to: [user ids], note}`: one row per person, or one with `to_user` NULL for everyone; a new one for the same
+person (or everyone) on the same course replaces the old. `GET` on the same path gives the people to pick from and the
+current list; `DELETE /api/recommendations/{id}` takes one back (whoever made it, or an admin). `recommend.for_user`
+gives each course's newest recommendation to this person or everyone, not made by them, and newer than their
+`rec_dismissed` row (`POST /api/courses/{id}/recommendations/dismiss`, "not now"); `GET /api/courses` returns it as
+`recommended` on published courses, and the home page shows those that aren't *mine* yet under "Recommended for you".
+
+## The welcome and the upload reminder
+
+`texts.py` holds the built-in welcome (Markdown) and reminder; the `welcome_text` and `upload_note` settings replace
+them (empty, or the built-in words, clears the setting). `GET /api/me` returns `upload_note` always, and `welcome` until
+the person has closed it (`users.prefs_json.welcomed_at`, set by `POST /api/me/welcomed`; `{seen: false}` clears it and
+returns the text). The front end shows it after the first page draws, and `uploadNote()` (util.js) puts the reminder
+under file inputs, written answers and the tutor. `PUT /api/settings` with `welcome_again` clears everyone's
+`welcomed_at`.
+
+## What a course costs
+
+`GET /api/courses/{id}` returns `spend` (all time) and `spend_month` to admins and the course's owner, from
+`llm_calls.course_id`. The Course tab shows them.
 
 ## Achievements
 

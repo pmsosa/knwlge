@@ -42,18 +42,20 @@ Tick items off here as they land.
 - [x] **v0.4** Course page shows the author, last update and version
 - [x] **v0.4** Roles: authors change any course; learners may make private courses of their own (an admin switch)
       and suggest them for everyone; one monthly AI allowance for every learner, covering all their AI use
-- [ ] Optional: "recommend to" people or the whole group (a nudge, no deadlines)
+- [x] **v0.5** "Recommend to" people or everyone: a nudge on their home page with who and a note, no deadlines; "not now"
+      hides it
 - [x] The second read-through for a rewritten session draft, as for a new session
 
 ## Phase 3: other AI providers (follow-ups)
 
 - [x] Web search for OpenAI (its Responses API) and for OpenAI-compatible endpoints that offer it (LiteLLM's
       `web_search_options`, switched on per endpoint)
-- [ ] Price lists fetched for OpenAI models instead of typed in
+- [ ] Price lists fetched for OpenAI models instead of typed in (likely from LiteLLM's public price list; later)
 
 ## Phase 4: welcome
 
-- [ ] A one-time welcome screen, and a one-line reminder under upload and submit buttons about what not to upload
+- [x] **v0.5** A one-time welcome screen, and a one-line reminder under upload and send buttons about what not to upload;
+      both texts editable by admins
 
 ## Phase 5: hands-on labs
 
@@ -73,6 +75,6 @@ Tick items off here as they land.
 
 ## Open questions
 
-- Recommend or assign courses to specific people: in or out?
-- Per-person soft spend limits?
-- Should authors see what their own courses cost?
+- Per-person soft spend limits? (v0.4 has one monthly allowance for every learner)
+
+Decided: recommending is in, assigning with deadlines is out; authors see what their own courses cost (v0.5).

@@ -23,6 +23,18 @@ username. Too many wrong tries in a row and it makes you wait a little before th
 
 **sign out** is in the top bar, next to your name and role.
 
+### The welcome
+
+The first time you open Knwlge, a short welcome explains how courses, questions, the tutor and flags work, with a
+reminder about what not to upload. **Got it** closes it for good; **Show the welcome again** on your account page
+(click your name) brings it back. An admin may have changed its words for your group.
+
+<img src="images/welcome.png" alt="The welcome: how sessions, written answers, the tutor, warm-ups and flags work, and what not to upload" width="100%">
+
+Under every upload and send button (a new course's files, materials, written answers, the tutor) a one-line reminder
+says what not to send: passwords, other people's personal details, confidential work files. What you upload or type
+there goes to the AI provider.
+
 ### Your name
 
 Click your name in the top bar to change the name others see (on courses you write, in the people list and the audit
@@ -40,11 +52,16 @@ log). The username you sign in with stays the same. The same page has **change p
 
 ### Your courses and the rest
 
-The home page has two parts, split by a line:
+The home page has up to three parts:
 
 - **My courses**: the ones you're taking. A course moves up here by itself once you start it (finish a session or
   answer a question). Pinned ones come first. A course an author is still making is theirs too.
+- **Recommended for you** (team mode): courses an author or admin suggested to you, or to everyone, with who and
+  their note. It's a nudge, with no deadline. Start one (or press **+**) and it moves to your courses; **×** (not now)
+  moves it to available. A newer recommendation of the same course shows it here again.
 - **Available**: everything else you can open. **+** on a card adds it to your courses without starting it.
+
+<img src="images/recommended.png" alt="Recommended for you: two courses, each with who recommended it and their note, between My courses and Available" width="100%">
 
 On each of your cards, the pin keeps it at the top, and the box icon **moves it to available** when you're done with
 it or putting it aside. Your progress stays; start it again (or press **+**) and it comes back up. Pins and shelves are

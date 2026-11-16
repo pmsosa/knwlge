@@ -424,6 +424,17 @@ def demo_changes(c) -> None:
     c.execute("INSERT OR REPLACE INTO course_opens(user_id, course_id, at) VALUES (?,?,?)", (ids["kim"], knots, stamp(1)))
 
 
+def demo_recommendations(c) -> None:
+    """Sam recommends watercolour to Kim; Maya recommends the money course to everyone."""
+    ids = {r["username"]: r["id"] for r in c.execute("SELECT id, username FROM users")}
+    stamp = lambda days: (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
+    course = lambda word: c.execute("SELECT id FROM courses WHERE title LIKE ?", (f"%{word}%",)).fetchone()["id"]  # noqa: E731
+    for word, to, by, note, days in (("Watercolour", "kim", "sam", "A gentle one for the weekends, and the washes session is lovely.", 1),
+                                     ("Money Basics", None, "maya", "Worth an hour for everyone: the emergency-fund session especially.", 3)):
+        c.execute("INSERT INTO recommendations(course_id, to_user, by_user, note, created_at) VALUES (?,?,?,?,?)",
+                  (course(word), ids[to] if to else None, ids[by], note, stamp(days)))
+
+
 def main() -> None:
     db.init()
     with db.tx() as c:
@@ -465,6 +476,9 @@ def main() -> None:
             demo_team(c)
             demo_team_progress(c)
             demo_changes(c)
+            demo_recommendations(c)
+        # everyone has seen the welcome except Kim, who sees it on first sign-in
+        c.execute("UPDATE users SET prefs_json=json_set(prefs_json, '$.welcomed_at', ?) WHERE username<>'kim'", (db.now(),))
     print("demo data written" + (" (with team accounts: " + ", ".join(f"{u} / {p}" for u, _, _, p in DEMO_PEOPLE) + ")"
                                  if "--team" in sys.argv[1:] else ""))
 

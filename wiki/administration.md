@@ -14,6 +14,7 @@ For admins. In personal mode you're the admin; **dashboard**, **people** and **a
 | AI providers | Gemini is built in; add OpenAI, Anthropic or an OpenAI-compatible endpoint. Each has **save**, **test and list models**, **remove**, and **Prices** (see below). Keys never leave the server and aren't shown again |
 | Who does what | A provider and model for each kind of work (see below) |
 | Monthly budget | A cap in dollars, or **no limit** (the default). When the month's spend reaches it, new work pauses until next month or until you raise it |
+| Welcome and reminder | The welcome everyone sees once, and the one-line reminder under upload and send buttons ([below](#welcome-and-reminder)) |
 | Changes and courses (team mode) | Review before changes go live; whether learners can make their own courses; a monthly AI allowance per learner ([below](#changes-and-courses)) |
 | Password (personal mode) | Off by default: the app just opens. Set one and Knwlge asks for it; **turn off password** opens it again |
 | Paused work | Work pauses when a provider rate-limits, refuses its key, or the budget is reached. **resume paused work now** tries again (saving settings does too) |
@@ -92,6 +93,17 @@ The feed shows when someone finishes a session or a course, or earns an achievem
 chooses in their account (**Share my activity**, off by default) whether they appear. Nothing is recorded for someone
 who isn't sharing, so turning it on later never shows the past; turning it off removes their entries. Drafts never
 appear, and entries older than 90 days are cleared.
+
+## Welcome and reminder
+
+Both start with built-in words; change them for your group in **Settings**, then **Save words**. Clear a box to go
+back to the built-in text.
+
+- **Welcome** (Markdown): shown once, the first time someone opens Knwlge. Changing it doesn't show it again by
+  itself; **Show the welcome to everyone again** does, the next time each person opens the app. Anyone can see it
+  again from their account page.
+- **Reminder under upload and send buttons**: one line about what not to send, under a new course's files,
+  materials, written answers and the tutor. It's also on the welcome.
 
 ## Changes and courses
 
